@@ -117,7 +117,7 @@ class DualEncoderDecoder(nn.Module):
         # (batch_size, num_tar, 2*d_y1 + 2*d_y2)
         return torch.cat((output1, output2), dim=-1), L_F, L_I, extra_pass
     
-def get_training_sample(extra_pass, validation_indices, valid_inverses, demo_data, 
+def get_training_sample(extra_pass, valid_inverses, demo_data, 
                         OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len):
 
     X1, X2, Y1, Y2, C = demo_data
