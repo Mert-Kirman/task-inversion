@@ -121,4 +121,6 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-2)
     scheduler = LambdaLR(optimizer, lr_lambda=lambda epoch: 1 if epoch < 40_000 else 5e-1)
 
-    train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True)
+    errors, losses = train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True)
+    np.save(f'{save_folder}/run_{run_id}/errors.npy', np.array(errors))
+    np.save(f'{save_folder}/run_{run_id}/losses.npy', np.array(losses))
