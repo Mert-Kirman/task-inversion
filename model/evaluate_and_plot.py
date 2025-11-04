@@ -2,8 +2,9 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import model_mock_perfectly_paired as dual_enc_dec_cnmp
+import model_predict
 
-run_id = "run_1762272182.6701496"
+run_id = "run_1762276782.2889762"
 
 # Load the trained model
 data_type = "perfect_paired/sin"
@@ -38,40 +39,38 @@ d_y2 = Y2.shape[2]
 X1 = torch.linspace(0, 1, time_len).repeat(num_demo, 1).reshape(num_demo, -1, 1)
 X2 = torch.linspace(0, 1, time_len).repeat(num_demo, 1).reshape(num_demo, -1, 1)
 
-# Load trained model (update with your actual run_id)
+# Load trained model
 model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
-model_path = f"save/{data_type}/{run_id}/perfectly_paired.pth"  # Update this!
+model_path = f"save/{data_type}/{run_id}/perfectly_paired.pth"
 model.load_state_dict(torch.load(model_path, weights_only=True))
 model.eval()
 
 # Select one forward extra trajectory to predict (index relative to extra data)
-extra_idx = 0  # First extra trajectory
+extra_idx = 19  # First extra trajectory
 actual_forward_extra_idx = Y1_Paired.shape[0] + extra_idx  # Actual index in full dataset
 
 # Prepare input
 forward_traj = Y1_Extra[extra_idx:extra_idx+1]  # Shape: [1, time_len, d_y1]
 context = C[actual_forward_extra_idx:actual_forward_extra_idx+1]  # Shape: [1, d_param]
+print(context)
 context = context.unsqueeze(1).expand(-1, time_len, -1)  # Shape: [1, time_len, d_param]
 x_target = X2[actual_forward_extra_idx:actual_forward_extra_idx+1]  # Shape: [1, time_len, 1]
 
 # Create observation (using the forward trajectory)
-obs_forward = torch.cat([X1[actual_forward_extra_idx:actual_forward_extra_idx+1], forward_traj], dim=-1)
-obs_inverse = torch.cat([X2[actual_forward_extra_idx:actual_forward_extra_idx+1], torch.zeros_like(Y2[actual_forward_extra_idx:actual_forward_extra_idx+1])], dim=-1)
-
-# Concatenate both observations
-obs = torch.cat([obs_forward, obs_inverse], dim=-1)  # Shape: [1, time_len, d_x+d_y1+d_x+d_y2]
-mask_size = time_len
-mask = [
-    torch.eye(mask_size).unsqueeze(0),   # Forward mask: identity matrix (each point uses itself)
-    torch.zeros(1, mask_size, mask_size)  # Inverse mask: no inverse observations
-]
+time = np.linspace(0, 1, time_len)
+idx = np.random.permutation(time_len)
+idx = idx[:3]  # Use 3 random points as conditions
+time = [time[i] for i in idx]
+f_condition_points = [[t, Y1[actual_forward_extra_idx, i:i+1]] for t,i in zip(time, idx)]
 
 # Predict inverse
 with torch.no_grad():
-    output, _, _, _ = model(obs, context, mask, x_target, extra_pass=False)
-    predicted_inverse = output[:, :, d_y1:d_y1+d_y2]  # Extract inverse part
+    fi_means, fi_stds = model_predict.predict_forward_forward(model, time_len, context, f_condition_points, d_x, d_y1, d_y2)
+    
+    # Denormalize predicted inverse
+    fi_means = fi_means * (max_dim - min_dim) + min_dim
 
-print("Predicted inverse trajectory shape:", predicted_inverse.shape)
+print("Predicted inverse trajectory shape:", fi_means.shape)
 
 # Get actual inverse
 actual_inverse = Y2_Extra[extra_idx]
@@ -82,8 +81,10 @@ plt.figure(figsize=(12, 6))
 # Plot each dimension
 for dim in range(d_y2):
     plt.subplot(1, d_y2, dim+1)
+    plt.plot(forward_traj[0, :, dim].numpy(), label='Actual Forward', linewidth=2)
+    plt.scatter([i for t,i in zip(time, idx)], [forward_traj[0, i, dim].numpy() for t,i in zip(time, idx)], color='red', label='Condition Points', zorder=5)
     plt.plot(actual_inverse[:, dim].numpy(), label='Actual Inverse', linewidth=2)
-    plt.plot(predicted_inverse[0, :, dim].numpy(), label='Predicted Inverse', linewidth=2, linestyle='--')
+    plt.plot(fi_means[:, dim].numpy(), label='Predicted Inverse', linewidth=2, linestyle='--')
     plt.xlabel('Time Step')
     plt.ylabel(f'Dimension {dim+1}')
     plt.title(f'Inverse Trajectory - Dim {dim+1}')
@@ -95,7 +96,7 @@ plt.savefig(f'save/{data_type}/{run_id}/prediction_vs_actual.png', dpi=150)
 plt.show()
 
 # Print error metrics
-mse = torch.mean((predicted_inverse[0] - actual_inverse) ** 2).item()
+mse = torch.mean((fi_means - actual_inverse) ** 2).item()
 print(f"Mean Squared Error: {mse:.6f}")
 
 #plot errors.npy and losses.npy saved during training to visualize training progress
@@ -125,3 +126,5 @@ plt.grid(True)
 plt.tight_layout()
 plt.savefig(f'save/{data_type}/{run_id}/training_progress.png', dpi=150) # Save the figure
 plt.show()
+
+print(fi_means[:, 0])
