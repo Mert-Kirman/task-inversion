@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import model_mock_perfectly_paired as dual_enc_dec_cnmp
 
+run_id = "run_1762272182.6701496"
+
 # Load the trained model
 data_type = "perfect_paired/sin"
 data_folder = f"mock_data/{data_type}"
@@ -38,7 +40,7 @@ X2 = torch.linspace(0, 1, time_len).repeat(num_demo, 1).reshape(num_demo, -1, 1)
 
 # Load trained model (update with your actual run_id)
 model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
-model_path = f"save/{data_type}/run_1761749121.5686302/perfectly_paired.pth"  # Update this!
+model_path = f"save/{data_type}/{run_id}/perfectly_paired.pth"  # Update this!
 model.load_state_dict(torch.load(model_path, weights_only=True))
 model.eval()
 
@@ -89,7 +91,7 @@ for dim in range(d_y2):
     plt.grid(True)
 
 plt.tight_layout()
-plt.savefig(f'save/{data_type}/prediction_vs_actual.png', dpi=150)
+plt.savefig(f'save/{data_type}/{run_id}/prediction_vs_actual.png', dpi=150)
 plt.show()
 
 # Print error metrics
@@ -97,8 +99,8 @@ mse = torch.mean((predicted_inverse[0] - actual_inverse) ** 2).item()
 print(f"Mean Squared Error: {mse:.6f}")
 
 #plot errors.npy and losses.npy saved during training to visualize training progress
-errors = np.load(f'save/{data_type}/run_1761749121.5686302/errors.npy')  # Update this!
-losses = np.load(f'save/{data_type}/run_1761749121.5686302/losses.npy')  # Update this!
+errors = np.load(f'save/{data_type}/{run_id}/errors.npy')  # Update this!
+losses = np.load(f'save/{data_type}/{run_id}/losses.npy')  # Update this!
 
 plt.figure(figsize=(12, 6))
 
@@ -121,5 +123,5 @@ plt.legend()
 plt.grid(True)
 
 plt.tight_layout()
-plt.savefig(f'save/{data_type}/training_progress.png', dpi=150)
+plt.savefig(f'save/{data_type}/{run_id}/training_progress.png', dpi=150) # Save the figure
 plt.show()

@@ -46,13 +46,18 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
         optimizer.step()
         scheduler.step()
 
-        if i > 35000 and i % 100 == 0:
+        if i > 0 and i % 200 == 0:
             epoch_val_error = validate_model.val_only_extra(model, validation_indices, i, demo_data, 
                                                             d_x, d_y1, d_y2)
             errors.append(epoch_val_error)
             losses.append(loss.item())
 
             if min(errors) == errors[-1]:
+                # Save errors and losses
+                np.save(f'{save_folder}/run_{run_id}/errors.npy', np.array(errors))
+                np.save(f'{save_folder}/run_{run_id}/losses.npy', np.array(losses))
+
+                # Save model
                 tqdm.write(f"Run ID: {run_id}, Saved model epoch {i}, Train loss: {loss.item():6f}, Validation error: {epoch_val_error:6f}")
                 torch.save(model.state_dict(), f'{save_folder}/run_{run_id}/perfectly_paired.pth')
 
@@ -122,5 +127,3 @@ if __name__ == "__main__":
     scheduler = LambdaLR(optimizer, lr_lambda=lambda epoch: 1 if epoch < 40_000 else 5e-1)
 
     errors, losses = train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True)
-    np.save(f'{save_folder}/run_{run_id}/errors.npy', np.array(errors))
-    np.save(f'{save_folder}/run_{run_id}/losses.npy', np.array(losses))
