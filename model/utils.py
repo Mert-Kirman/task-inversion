@@ -43,8 +43,8 @@ def generate_demonstrations(num_demo, time_len = 200, params = None, plot_title 
     times = torch.zeros((2*(num_demo), time_len, 1))
     times[:] = x.reshape((1, time_len, 1))
 
-    num_paired = int(num_demo * 0.75)
-    num_extra = int(num_demo * 0.25)
+    num_paired = int(num_demo * 0.5)
+    num_extra = int(num_demo * 0.5)
 
     values = torch.zeros((2*num_paired, time_len, 1))
     extra_values = torch.zeros((2*num_extra, time_len, 1))
@@ -67,6 +67,8 @@ def generate_demonstrations(num_demo, time_len = 200, params = None, plot_title 
         for i in range(time_len):
            values[d+num_paired, i] = -1*(f_dist1(x[i]*0.5))
 
+        context_params_paired[d] = amplitudes[d % len(amplitudes)]
+
         # Plot demonstrations
         plt.plot(times[d], values[d], color="black", alpha=0.5)
         plt.plot(times[d], values[d+num_paired], color="black", alpha=0.5)
@@ -79,6 +81,8 @@ def generate_demonstrations(num_demo, time_len = 200, params = None, plot_title 
 
         for i in range(time_len):
            extra_values[d+num_extra, i] = -1*(f_dist2(x[i]*0.5))
+
+        context_params_extra[d] = extra_amplitudes[d % len(extra_amplitudes)]
 
         # Plot demonstrations
         plt.plot(times[d], extra_values[d], color="black", alpha=0.5)

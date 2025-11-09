@@ -21,32 +21,32 @@ class DualEncoderDecoder(nn.Module):
             nn.Linear(d_x + d_y1, 64), nn.LayerNorm(64), nn.ReLU(),
             nn.Linear(64, 64), nn.LayerNorm(64), nn.ReLU(),
             nn.Linear(64, 128), nn.LayerNorm(128), nn.ReLU(),
-            nn.Linear(128, 256)
+            nn.Linear(128, 128)
         )
 
         self.encoder2 = nn.Sequential(
             nn.Linear(d_x + d_y2, 64), nn.LayerNorm(64), nn.ReLU(),
             nn.Linear(64, 64), nn.LayerNorm(64), nn.ReLU(),
             nn.Linear(64, 128), nn.LayerNorm(128), nn.ReLU(),
-            nn.Linear(128, 256)
+            nn.Linear(128, 128)
         )
 
         # --- Decoders with BatchNorm and Dropout ---
         self.decoder1 = nn.Sequential(
-            nn.Linear(d_x + 256 + self.learned_param_dim, 512), nn.LayerNorm(512), nn.ReLU(), 
-            nn.Linear(512, 256), nn.LayerNorm(256), nn.ReLU(),
+            nn.Linear(d_x + 128 + self.learned_param_dim, 256), nn.LayerNorm(256), nn.ReLU(), 
+            # nn.Linear(512, 256), nn.LayerNorm(256), nn.ReLU(),
             nn.Linear(256, 256), nn.LayerNorm(256), nn.ReLU(),
             nn.Linear(256, 128), nn.LayerNorm(128), nn.ReLU(),
-            nn.Linear(128, 128), nn.LayerNorm(128), nn.ReLU(),
+            # nn.Linear(128, 128), nn.LayerNorm(128), nn.ReLU(),
             nn.Linear(128, (d_y1)*2)
         )
 
         self.decoder2 = nn.Sequential(
-            nn.Linear(d_x + 256 + self.learned_param_dim, 512), nn.LayerNorm(512), nn.ReLU(), 
-            nn.Linear(512, 256), nn.LayerNorm(256), nn.ReLU(),
+            nn.Linear(d_x + 128 + self.learned_param_dim, 256), nn.LayerNorm(256), nn.ReLU(), 
+            # nn.Linear(512, 256), nn.LayerNorm(256), nn.ReLU(),
             nn.Linear(256, 256), nn.LayerNorm(256), nn.ReLU(),
             nn.Linear(256, 128), nn.LayerNorm(128), nn.ReLU(),
-            nn.Linear(128, 128), nn.LayerNorm(128), nn.ReLU(),
+            # nn.Linear(128, 128), nn.LayerNorm(128), nn.ReLU(),
             nn.Linear(128, (d_y2)*2)
         )
 
@@ -103,18 +103,18 @@ class DualEncoderDecoder(nn.Module):
         # (batch_size, num_tar, 2*d_y1 + 2*d_y2)
         return torch.cat((output1, output2), dim=-1), L_F, L_I, extra_pass
     
-def get_training_sample(extra_pass, valid_inverses, demo_data, 
+def get_training_sample(extra_pass, valid_inverses, validation_indices, demo_data, 
                         OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len):
 
     X1, X2, Y1, Y2, C = demo_data
 
-    batch_size = 24
+    batch_size = 32
     
     traj_multinom = torch.ones(d_N) # multinomial distribution for trajectories
 
-    #for i in range(d_N):
-    #    if i in validation_indices:
-    #        traj_multinom[i] = 0
+    for i in range(d_N):
+       if i in validation_indices:
+           traj_multinom[i] = 0
 
     if not extra_pass:
         for i in range(len(traj_multinom)):

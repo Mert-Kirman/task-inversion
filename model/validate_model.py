@@ -64,8 +64,8 @@ def val_only_extra(model, validation_indices, epoch_count, demo_data, d_x, d_y1,
         # permute time
         idx = np.random.permutation(time_len)
         
-        #idx = idx[:3]
-        idx = [0]
+        idx = idx[:3]
+        # idx = [0]
 
         time = [time[i] for i in idx]
         f_condition_points = [[t, Y1[validation_idx, i:i+1]] for t,i in zip(time, idx)]

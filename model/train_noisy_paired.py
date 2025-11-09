@@ -33,7 +33,7 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
             if p < 0.20:
                 extra_pass = True
 
-        obs, params, mask, x_tar, y_tar_f, y_tar_i, extra_pass = dual_enc_dec_cnmp.get_training_sample(extra_pass, valid_inverses, demo_data, OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len)
+        obs, params, mask, x_tar, y_tar_f, y_tar_i, extra_pass = dual_enc_dec_cnmp.get_training_sample(extra_pass, valid_inverses, validation_indices, demo_data, OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len)
         optimizer.zero_grad()
         output, L_F, L_I, extra_pass = model(obs, params, mask, x_tar, extra_pass)
         
@@ -46,17 +46,17 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
         optimizer.step()
         scheduler.step()
 
-        if i > 0 and i % 200 == 0:
+        if i > 0 and i % 1000 == 0:
             epoch_val_error = validate_model.val_only_extra(model, validation_indices, i, demo_data, 
                                                             d_x, d_y1, d_y2)
             errors.append(epoch_val_error)
             losses.append(loss.item())
 
-            if min(errors) == errors[-1]:
-                # Save errors and losses
-                np.save(f'{save_folder}/run_{run_id}/errors.npy', np.array(errors))
-                np.save(f'{save_folder}/run_{run_id}/losses.npy', np.array(losses))
+            # Save errors and losses
+            np.save(f'{save_folder}/run_{run_id}/errors.npy', np.array(errors))
+            np.save(f'{save_folder}/run_{run_id}/losses.npy', np.array(losses))
 
+            if min(errors) == errors[-1]:
                 # Save model
                 tqdm.write(f"Run ID: {run_id}, Saved model epoch {i}, Train loss: {loss.item():6f}, Validation error: {epoch_val_error:6f}")
                 torch.save(model.state_dict(), f'{save_folder}/run_{run_id}/perfectly_paired.pth')
@@ -107,8 +107,7 @@ if __name__ == "__main__":
     OBS_MAX = 10
     d_N = num_demo
 
-    # last 20 traj are extra
-    validation_indices = [69, 71, 74, 76]     
+    validation_indices = range(0, Y1.shape[0], 4)
 
     demo_data = [X1, X2, Y1, Y2, C]
 
@@ -120,8 +119,8 @@ if __name__ == "__main__":
     losses = []
     errors_with_latent = []
 
-    EPOCHS = 60_000
-    learning_rate = 1e-3
+    EPOCHS = 60_001
+    learning_rate = 3e-4
     model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-2)
     scheduler = LambdaLR(optimizer, lr_lambda=lambda epoch: 1 if epoch < 40_000 else 5e-1)

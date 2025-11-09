@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import model_mock_perfectly_paired as dual_enc_dec_cnmp
 import model_predict
 
-run_id = "run_1762276782.2889762"
+run_id = "run_1762635634.7670999"
 
 # Load the trained model
 data_type = "perfect_paired/sin"
@@ -65,7 +65,7 @@ f_condition_points = [[t, Y1[actual_forward_extra_idx, i:i+1]] for t,i in zip(ti
 
 # Predict inverse
 with torch.no_grad():
-    fi_means, fi_stds = model_predict.predict_forward_forward(model, time_len, context, f_condition_points, d_x, d_y1, d_y2)
+    fi_means, fi_stds = model_predict.predict_inverse(model, time_len, context, f_condition_points, d_x, d_y1, d_y2)
     
     # Denormalize predicted inverse
     fi_means = fi_means * (max_dim - min_dim) + min_dim
