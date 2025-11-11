@@ -4,12 +4,44 @@ import matplotlib.pyplot as plt
 import model_mock_perfectly_paired as dual_enc_dec_cnmp
 import model_predict
 
-run_id = "run_1762635634.7670999"
+run_id = "run_1762890756.371171"
 
 # Load the trained model
 data_type = "perfect_paired/sin"
 data_folder = f"mock_data/{data_type}"
 
+# ============== Plot training progress ==============
+# Load training progress data
+training_errors = np.load(f'save/{data_type}/{run_id}/training_errors_mse.npy')
+validation_errors = np.load(f'save/{data_type}/{run_id}/validation_errors_mse.npy')
+losses = np.load(f'save/{data_type}/{run_id}/losses_log_prob.npy')
+
+plt.figure(figsize=(12, 6))
+
+# Plot errors
+plt.subplot(1, 2, 1)
+plt.plot(training_errors, label='Training Error', linewidth=2)
+plt.plot(validation_errors, label='Validation Error', linewidth=2)
+plt.xlabel('Training Step')
+plt.ylabel('Error')
+plt.title('Training vs Validation Error (MSE) Over Time')
+plt.legend()
+plt.grid(True)
+
+# Plot losses
+plt.subplot(1, 2, 2) 
+plt.plot(losses, label='Training Loss', linewidth=2)
+plt.xlabel('Training Step')
+plt.ylabel('Loss')
+plt.title('Training Loss (Log Prob) Over Time')
+plt.legend()
+plt.grid(True)
+
+plt.tight_layout()
+plt.savefig(f'save/{data_type}/{run_id}/training_progress.png', dpi=150) # Save the figure
+plt.show()
+
+# ============== Plot model predictions vs actual trajectories ==============
 # Load data
 Y1_Paired = torch.load(f"{data_folder}/forward_data.pt", weights_only=True)
 Y2_Paired = torch.load(f"{data_folder}/inverse_data.pt", weights_only=True)
@@ -93,38 +125,6 @@ for dim in range(d_y2):
 
 plt.tight_layout()
 plt.savefig(f'save/{data_type}/{run_id}/prediction_vs_actual.png', dpi=150)
-plt.show()
-
-# Print error metrics
-mse = torch.mean((fi_means - actual_inverse) ** 2).item()
-print(f"Mean Squared Error: {mse:.6f}")
-
-#plot errors.npy and losses.npy saved during training to visualize training progress
-errors = np.load(f'save/{data_type}/{run_id}/errors.npy')  # Update this!
-losses = np.load(f'save/{data_type}/{run_id}/losses.npy')  # Update this!
-
-plt.figure(figsize=(12, 6))
-
-# Plot errors
-plt.subplot(1, 2, 1)
-plt.plot(errors, label='Validation Error', linewidth=2)
-plt.xlabel('Training Step')
-plt.ylabel('Error')
-plt.title('Validation Error Over Time')
-plt.legend()
-plt.grid(True)
-
-# Plot losses
-plt.subplot(1, 2, 2) 
-plt.plot(losses, label='Training Loss', linewidth=2)
-plt.xlabel('Training Step')
-plt.ylabel('Loss')
-plt.title('Training Loss Over Time')
-plt.legend()
-plt.grid(True)
-
-plt.tight_layout()
-plt.savefig(f'save/{data_type}/{run_id}/training_progress.png', dpi=150) # Save the figure
 plt.show()
 
 print(fi_means[:, 0])

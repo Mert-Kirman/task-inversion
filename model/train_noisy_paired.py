@@ -20,7 +20,8 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
     os.makedirs(f'logs/{data_type}/run_{run_id}/', exist_ok=True)
     sys.stdout = open(f'logs/{data_type}/run_{run_id}/train_log.txt', 'w')
 
-    errors = []
+    training_errors = []
+    validation_errors = []
     losses = []
 
     unpaired_traj = True 
@@ -47,21 +48,25 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
         scheduler.step()
 
         if i > 0 and i % 1000 == 0:
-            epoch_val_error = validate_model.val_only_extra(model, validation_indices, i, demo_data, 
-                                                            d_x, d_y1, d_y2)
-            errors.append(epoch_val_error)
+            epoch_train_error = validate_model.val_only_extra(model, training_indices, i, demo_data, d_x, d_y1, d_y2)
+            training_errors.append(epoch_train_error)
+
+            epoch_val_error = validate_model.val_only_extra(model, validation_indices, i, demo_data, d_x, d_y1, d_y2)
+            validation_errors.append(epoch_val_error)
+            
             losses.append(loss.item())
 
             # Save errors and losses
-            np.save(f'{save_folder}/run_{run_id}/errors.npy', np.array(errors))
-            np.save(f'{save_folder}/run_{run_id}/losses.npy', np.array(losses))
+            np.save(f'{save_folder}/run_{run_id}/training_errors_mse.npy', np.array(training_errors))
+            np.save(f'{save_folder}/run_{run_id}/validation_errors_mse.npy', np.array(validation_errors))
+            np.save(f'{save_folder}/run_{run_id}/losses_log_prob.npy', np.array(losses))
 
-            if min(errors) == errors[-1]:
+            if min(validation_errors) == validation_errors[-1]:
                 # Save model
                 tqdm.write(f"Run ID: {run_id}, Saved model epoch {i}, Train loss: {loss.item():6f}, Validation error: {epoch_val_error:6f}")
                 torch.save(model.state_dict(), f'{save_folder}/run_{run_id}/perfectly_paired.pth')
 
-    return errors, losses
+    return training_errors, validation_errors, losses
 
 
 if __name__ == "__main__":
@@ -107,7 +112,9 @@ if __name__ == "__main__":
     OBS_MAX = 10
     d_N = num_demo
 
-    validation_indices = range(0, Y1.shape[0], 4)
+    all_indices = set(range(num_demo))
+    validation_indices = range(0, Y1.shape[0], 4) # Indices of trajectories used for validation
+    training_indices = list(all_indices - set(validation_indices)) # Indices of trajectories used for training
 
     demo_data = [X1, X2, Y1, Y2, C]
 
@@ -119,10 +126,10 @@ if __name__ == "__main__":
     losses = []
     errors_with_latent = []
 
-    EPOCHS = 60_001
+    EPOCHS = 50_001
     learning_rate = 3e-4
     model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-2)
     scheduler = LambdaLR(optimizer, lr_lambda=lambda epoch: 1 if epoch < 40_000 else 5e-1)
 
-    errors, losses = train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True)
+    training_errors, validation_errors, losses = train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True)
