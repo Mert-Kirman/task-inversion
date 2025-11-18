@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import model_mock_perfectly_paired as dual_enc_dec_cnmp
 import model_predict
 
-run_id = "run_1762890756.371171"
+run_id = "run_1763498820.025824"
 
 # Load the trained model
 data_type = "perfect_paired/sin"
@@ -43,16 +43,24 @@ plt.show()
 
 # ============== Plot model predictions vs actual trajectories ==============
 # Load data
-Y1_Paired = torch.load(f"{data_folder}/forward_data.pt", weights_only=True)
-Y2_Paired = torch.load(f"{data_folder}/inverse_data.pt", weights_only=True)
-Y1_Extra = torch.load(f"{data_folder}/forward_extra_data.pt", weights_only=True)
-Y2_Extra = torch.load(f"{data_folder}/inverse_extra_data.pt", weights_only=True)
-C1_Paired = torch.load(f"{data_folder}/context_paired_data.pt", weights_only=True)
-C1_Extra = torch.load(f"{data_folder}/context_extra_data.pt", weights_only=True)
+Y1_Paired = torch.load(f"{data_folder}/forward_modality_1_paired_data.pt", weights_only=True)
+Y1_Aux = torch.load(f"{data_folder}/forward_modality_1_aux_data.pt", weights_only=True)
+Y1_Inverse_Paired = torch.load(f"{data_folder}/inverse_modality_1_paired_data.pt", weights_only=True)
+Y1_Inverse_Aux = torch.load(f"{data_folder}/inverse_modality_1_aux_data.pt", weights_only=True)
 
-Y1 = torch.cat((Y1_Paired, Y1_Extra), dim=0)
-Y2 = torch.cat((Y2_Paired, Y2_Extra), dim=0)
-C = torch.cat((C1_Paired, C1_Extra), dim=0)
+Y2_Paired = torch.load(f"{data_folder}/forward_modality_2_paired_data.pt", weights_only=True)
+Y2_Aux = torch.load(f"{data_folder}/forward_modality_2_aux_data.pt", weights_only=True)
+Y2_Inverse_Paired = torch.load(f"{data_folder}/inverse_modality_2_paired_data.pt", weights_only=True)
+Y2_Inverse_Aux = torch.load(f"{data_folder}/inverse_modality_2_aux_data.pt", weights_only=True)
+
+C1_Paired = torch.load(f"{data_folder}/context_modality_1_paired_data.pt", weights_only=True)
+C1_Aux = torch.load(f"{data_folder}/context_modality_1_aux_data.pt", weights_only=True)
+C2_Paired = torch.load(f"{data_folder}/context_modality_2_paired_data.pt", weights_only=True)
+C2_Aux = torch.load(f"{data_folder}/context_modality_2_aux_data.pt", weights_only=True)
+
+Y1 = torch.cat((Y1_Paired, Y1_Aux, Y2_Paired, Y2_Aux), dim=0) # Y1 is the forward trajectories of modality 1 and modality 2
+Y2 = torch.cat((Y1_Inverse_Paired, Y1_Inverse_Aux, Y2_Inverse_Paired, Y2_Inverse_Aux), dim=0) # Y2 is the inverse trajectories of modality 1 and modality 2
+C = torch.cat((C1_Paired, C1_Aux, C2_Paired, C2_Aux), dim=0)
 
 # Normalize (same as training)
 for dim in range(Y1.shape[2]):
@@ -77,54 +85,48 @@ model_path = f"save/{data_type}/{run_id}/perfectly_paired.pth"
 model.load_state_dict(torch.load(model_path, weights_only=True))
 model.eval()
 
-# Select one forward extra trajectory to predict (index relative to extra data)
-extra_idx = 19  # First extra trajectory
-actual_forward_extra_idx = Y1_Paired.shape[0] + extra_idx  # Actual index in full dataset
+#### Test Modality 2 ####
 
+## 1) Condition from inverse trajectory (final point), predict inverse trajectory ##
 # Prepare input
-forward_traj = Y1_Extra[extra_idx:extra_idx+1]  # Shape: [1, time_len, d_y1]
-context = C[actual_forward_extra_idx:actual_forward_extra_idx+1]  # Shape: [1, d_param]
-print(context)
+inverse_modality_2_aux_idx = 1
+target_inverse_global_idx = Y1_Paired.shape[0] + Y1_Aux.shape[0] + Y2_Paired.shape[0] + inverse_modality_2_aux_idx
+
+inverse_modality_2_aux_traj = Y2_Aux[inverse_modality_2_aux_idx:inverse_modality_2_aux_idx+1]  # Shape: [1, time_len, d_y2]
+context = C2_Aux[inverse_modality_2_aux_idx:inverse_modality_2_aux_idx+1]  # Shape: [1, d_param]
 context = context.unsqueeze(1).expand(-1, time_len, -1)  # Shape: [1, time_len, d_param]
-x_target = X2[actual_forward_extra_idx:actual_forward_extra_idx+1]  # Shape: [1, time_len, 1]
+x_target = X1[Y2_Paired.shape[0] + inverse_modality_2_aux_idx:Y2_Paired.shape[0] + inverse_modality_2_aux_idx + 1]  # Shape: [1, time_len, 1]
 
 # Create observation (using the forward trajectory)
 time = np.linspace(0, 1, time_len)
-idx = np.random.permutation(time_len)
-idx = idx[:3]  # Use 3 random points as conditions
+idx = [time_len - 1] # Final point as condition
 time = [time[i] for i in idx]
-f_condition_points = [[t, Y1[actual_forward_extra_idx, i:i+1]] for t,i in zip(time, idx)]
+i_condition_points = [[t, Y1[target_inverse_global_idx, i:i+1]] for t,i in zip(time, idx)]
+
+print(f'Condition points (time, y): {i_condition_points}')
+print(f'Context: {context}')
 
 # Predict inverse
 with torch.no_grad():
-    fi_means, fi_stds = model_predict.predict_inverse(model, time_len, context, f_condition_points, d_x, d_y1, d_y2)
+    ii_means, ii_stds = model_predict.predict_inverse(model, time_len, context, i_condition_points, d_x, d_y1, d_y2)
     
-    # Denormalize predicted inverse
-    fi_means = fi_means * (max_dim - min_dim) + min_dim
+    # # Denormalize predicted inverse
+    # ii_means = ii_means * (max_dim - min_dim) + min_dim
 
-print("Predicted inverse trajectory shape:", fi_means.shape)
-
-# Get actual inverse
-actual_inverse = Y2_Extra[extra_idx]
-
-# Plot
+# Plot all trajectories except the one we want to predict
 plt.figure(figsize=(12, 6))
+for i in range(Y1.shape[0]):
+    plt.plot(X1[0], Y1[i], color='blue' if i == target_inverse_global_idx else 'orange', alpha=0.8)
+    plt.plot(X1[0], Y2[i], color='blue' if i == target_inverse_global_idx else 'orange', alpha=0.8)
 
-# Plot each dimension
-for dim in range(d_y2):
-    plt.subplot(1, d_y2, dim+1)
-    plt.plot(forward_traj[0, :, dim].numpy(), label='Actual Forward', linewidth=2)
-    plt.scatter([i for t,i in zip(time, idx)], [forward_traj[0, i, dim].numpy() for t,i in zip(time, idx)], color='red', label='Condition Points', zorder=5)
-    plt.plot(actual_inverse[:, dim].numpy(), label='Actual Inverse', linewidth=2)
-    plt.plot(fi_means[:, dim].numpy(), label='Predicted Inverse', linewidth=2, linestyle='--')
-    plt.xlabel('Time Step')
-    plt.ylabel(f'Dimension {dim+1}')
-    plt.title(f'Inverse Trajectory - Dim {dim+1}')
-    plt.legend()
-    plt.grid(True)
+plt.plot(X1[0], ii_means, color='green', linewidth=2, linestyle='--', label='Predicted Inverse Trajectory')
+plt.scatter(i_condition_points[0][0], i_condition_points[0][1], color='red', s=100, label='Condition Point')
 
 plt.tight_layout()
+plt.grid(True)
+plt.xlabel('Time')
+plt.ylabel('Trajectory Value')
+plt.title('Model Prediction vs Actual Trajectory for Inverse Modality 2')
+plt.legend()
 plt.savefig(f'save/{data_type}/{run_id}/prediction_vs_actual.png', dpi=150)
 plt.show()
-
-print(fi_means[:, 0])

@@ -74,20 +74,26 @@ if __name__ == "__main__":
     data_folder = f"mock_data/{data_type}"
 
     # Load trajectory(sensorimotor) data
-    Y1_Paired = torch.load(f"{data_folder}/forward_data.pt", weights_only=True)
-    Y2_Paired = torch.load(f"{data_folder}/inverse_data.pt", weights_only=True)
+    Y1_Paired = torch.load(f"{data_folder}/forward_modality_1_paired_data.pt", weights_only=True)
+    Y1_Aux = torch.load(f"{data_folder}/forward_modality_1_aux_data.pt", weights_only=True)
+    Y1_Inverse_Paired = torch.load(f"{data_folder}/inverse_modality_1_paired_data.pt", weights_only=True)
+    Y1_Inverse_Aux = torch.load(f"{data_folder}/inverse_modality_1_aux_data.pt", weights_only=True)
 
-    Y1_Extra = torch.load(f"{data_folder}/forward_extra_data.pt", weights_only=True)
-    Y2_Extra = torch.load(f"{data_folder}/inverse_extra_data.pt", weights_only=True)
+    Y2_Paired = torch.load(f"{data_folder}/forward_modality_2_paired_data.pt", weights_only=True)
+    Y2_Aux = torch.load(f"{data_folder}/forward_modality_2_aux_data.pt", weights_only=True)
+    Y2_Inverse_Paired = torch.load(f"{data_folder}/inverse_modality_2_paired_data.pt", weights_only=True)
+    Y2_Inverse_Aux = torch.load(f"{data_folder}/inverse_modality_2_aux_data.pt", weights_only=True)
 
-    Y1 = torch.cat((Y1_Paired, Y1_Extra), dim=0)
-    Y2 = torch.cat((Y2_Paired, Y2_Extra), dim=0)
+    Y1 = torch.cat((Y1_Paired, Y1_Aux, Y2_Paired, Y2_Aux), dim=0) # Y1 is the forward trajectories of modality 1 and modality 2
+    Y2 = torch.cat((Y1_Inverse_Paired, Y1_Inverse_Aux, Y2_Inverse_Paired, Y2_Inverse_Aux), dim=0) # Y2 is the inverse trajectories of modality 1 and modality 2
 
     # Load context data (Task Parameters)
-    C1_Paired = torch.load(f"{data_folder}/context_paired_data.pt", weights_only=True)
-    C1_Extra = torch.load(f"{data_folder}/context_extra_data.pt", weights_only=True)
+    C1_Paired = torch.load(f"{data_folder}/context_modality_1_paired_data.pt", weights_only=True)
+    C1_Aux = torch.load(f"{data_folder}/context_modality_1_aux_data.pt", weights_only=True)
+    C2_Paired = torch.load(f"{data_folder}/context_modality_2_paired_data.pt", weights_only=True)
+    C2_Aux = torch.load(f"{data_folder}/context_modality_2_aux_data.pt", weights_only=True)
 
-    C = torch.cat((C1_Paired, C1_Extra), dim=0)
+    C = torch.cat((C1_Paired, C1_Aux, C2_Paired, C2_Aux), dim=0)
 
     # Normalize Y1 and Y2 together
     for dim in range(Y1.shape[2]):
@@ -102,7 +108,7 @@ if __name__ == "__main__":
     X1 = torch.linspace(0, 1, time_len).repeat(num_demo, 1).reshape(num_demo, -1, 1)
     X2 = torch.linspace(0, 1, time_len).repeat(num_demo, 1).reshape(num_demo, -1, 1)
 
-    valid_inverses = [True for i in range(Y1_Paired.shape[0])] + [False for i in range(Y1_Extra.shape[0])]
+    valid_inverses = [True for i in range(Y1_Paired.shape[0])] + [False for i in range(Y1_Aux.shape[0])] + [True for i in range(Y2_Paired.shape[0])] + [False for i in range(Y2_Aux.shape[0])]
 
     d_x = 1
     d_param = C.shape[1]
@@ -113,7 +119,7 @@ if __name__ == "__main__":
     d_N = num_demo
 
     all_indices = set(range(num_demo))
-    validation_indices = range(0, Y1.shape[0], 4) # Indices of trajectories used for validation
+    validation_indices = [4, 11, 16, 22] # Indices of trajectories used for validation
     training_indices = list(all_indices - set(validation_indices)) # Indices of trajectories used for training
 
     demo_data = [X1, X2, Y1, Y2, C]
@@ -126,7 +132,7 @@ if __name__ == "__main__":
     losses = []
     errors_with_latent = []
 
-    EPOCHS = 50_001
+    EPOCHS = 60_001
     learning_rate = 3e-4
     model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-2)

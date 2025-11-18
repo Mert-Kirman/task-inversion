@@ -128,6 +128,57 @@ def generate_demonstrations(num_demo, time_len = 200, params = None, plot_title 
 
     return X1, X2, Y1, Y2, Y1_extra, Y2_extra, context_params_paired, context_params_extra
 
+def generate_demonstrations_multi_modality(num_demo, time_len = 200):
+    x = torch.linspace(0, 1, time_len)
+    times = torch.zeros((2*(num_demo), time_len, 1))
+    times[:] = x.reshape((1, time_len, 1))
+
+    num_modality_1 = int(num_demo * 0.5)
+    num_modality_2 = int(num_demo * 0.5)
+
+    values_modality_1 = torch.zeros((2*num_modality_1, time_len, 1))
+    values_modality_2 = torch.zeros((2*num_modality_2, time_len, 1))
+
+    f_frequencies = [1, 1.5, 2]  # Example frequencies
+    amplitudes = torch.linspace(1.1,1.5,num_modality_1)
+    extra_amplitudes = torch.linspace(2.1,2.5,num_modality_2)
+
+    phases = [0]  # Example phases
+
+    for d in range(num_modality_1):
+        f_dist1 = sinx(f_frequencies[0], amplitudes[d % len(amplitudes)], phases[d % len(phases)])
+
+        for i in range(time_len):
+            values_modality_1[d, i] = f_dist1(x[i]*0.5)     
+
+        for i in range(time_len):
+           values_modality_1[d+num_modality_1, i] = -1*(f_dist1(x[i]*0.5))
+
+    for d in range(num_modality_2):
+        f_dist2 = sinx(f_frequencies[0], extra_amplitudes[d % len(extra_amplitudes)], phases[d % len(phases)])
+
+        for i in range(time_len):
+            values_modality_2[d, i] = f_dist2(x[i]*0.5)        
+
+        for i in range(time_len):
+           values_modality_2[d+num_modality_2, i] = -1*(f_dist2(x[i]*0.5))
+
+    forward_modality_1 = values_modality_1[:num_modality_1]
+    inverse_modality_1 = values_modality_1[num_modality_1:]
+    
+    forward_modality_2 = values_modality_2[:num_modality_2]
+    inverse_modality_2 = values_modality_2[num_modality_2:]
+
+    Y1 = forward_modality_1.reshape(num_modality_1, time_len, 1)
+    Y1_inverse = inverse_modality_1.reshape(num_modality_1, time_len, 1)
+    X1 = times[:1]
+    X2 = times[:1]
+
+    Y2 = forward_modality_2.reshape(num_modality_2, time_len, 1)
+    Y2_inverse = inverse_modality_2.reshape(num_modality_2, time_len, 1)
+
+    return X1, X2, Y1, Y1_inverse, Y2, Y2_inverse
+
 def validate_model(means, stds, idx, demo_data, time_len, condition_points, epoch_count, d_y1, d_y2, forward, 
                    error_type='mse', plot=False):
 
