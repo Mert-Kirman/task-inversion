@@ -90,46 +90,42 @@ model.eval()
 #### Test Modality 2 ####
 
 ## 1) Condition from inverse trajectory (final point), predict inverse trajectory ##
-# Prepare input
-inverse_modality_2_aux_idx = 1
-target_inverse_global_idx = Y1_Paired.shape[0] + Y1_Aux.shape[0] + Y2_Paired.shape[0] + inverse_modality_2_aux_idx
-
-inverse_modality_2_aux_traj = Y2_Aux[inverse_modality_2_aux_idx:inverse_modality_2_aux_idx+1]  # Shape: [1, time_len, d_y2]
-context = C2_Aux[inverse_modality_2_aux_idx:inverse_modality_2_aux_idx+1]  # Shape: [1, d_param]
-# context = context.unsqueeze(1).expand(-1, time_len, -1)  # Shape: [1, time_len, d_param]
-x_target = X1[Y2_Paired.shape[0] + inverse_modality_2_aux_idx:Y2_Paired.shape[0] + inverse_modality_2_aux_idx + 1]  # Shape: [1, time_len, 1]
-
-# Create observation (using the forward trajectory)
 time = np.linspace(0, 1, time_len)
-idx = [time_len - 1] # Final point as condition
+idx = [60, time_len - 1] # Point(s) to be used as condition
 time = [time[i] for i in idx]
-i_condition_points = [[t, Y1[target_inverse_global_idx, i:i+1]] for t,i in zip(time, idx)]
 
-print(f'Condition points (time, y): {i_condition_points}')
-print(f'Context: {context}')
-print(f'Context shape: {context.shape}')
+# Plot all trajectories
+plt.figure(figsize=(50, 40))
+for j in range(Y1.shape[0]):
+    # Prepare input
+    context = C[j:j+1]  # Shape: [1, d_param]
+    x_target = X1[j:j+1]  # Shape: [1, time_len, 1]
 
-# Predict inverse
-with torch.no_grad():
-    ii_means, ii_stds = model_predict.predict_inverse(model, time_len, context, i_condition_points, d_x, d_y1, d_y2)
-    
-    # # Denormalize predicted inverse
-    # ii_means = ii_means * (max_dim - min_dim) + min_dim
+    # Create observation (using the forward trajectory)
+    i_condition_points = [[t, Y1[j, i:i+1]] for t,i in zip(time, idx)]
 
-# Plot all trajectories except the one we want to predict
-plt.figure(figsize=(12, 6))
-for i in range(Y1.shape[0]):
-    plt.plot(X1[0], Y1[i], color='blue' if i == target_inverse_global_idx else 'orange', alpha=0.8)
-    plt.plot(X1[0], Y2[i], color='blue' if i == target_inverse_global_idx else 'orange', alpha=0.8)
+    # Predict inverse
+    with torch.no_grad():
+        ii_means, ii_stds = model_predict.predict_inverse(model, time_len, context, i_condition_points, d_x, d_y1, d_y2)
+        
+        # # Denormalize predicted inverse
+        # ii_means = ii_means * (max_dim - min_dim) + min_dim
 
-plt.plot(X1[0], ii_means, color='green', linewidth=2, linestyle='--', label='Predicted Inverse Trajectory')
-plt.scatter(i_condition_points[0][0], i_condition_points[0][1], color='red', s=100, label='Condition Point')
+    plt.subplot(6, 4, j+1)
+    for i in range(Y1.shape[0]):
+        plt.plot(X1[0], Y1[i], color='blue' if i == j else 'orange', alpha=0.8)
+        plt.plot(X1[0], Y2[i], color='blue' if i == j else 'orange', alpha=0.8)
 
-plt.tight_layout()
-plt.grid(True)
-plt.xlabel('Time')
-plt.ylabel('Trajectory Value')
-plt.title('Model Prediction vs Actual Trajectory for Inverse Modality 2')
-plt.legend()
+    plt.plot(X1[0], ii_means, color='green', linewidth=2, linestyle='--', label='Predicted Inverse Trajectory')
+
+    for i in range(len(i_condition_points)):
+        plt.scatter(i_condition_points[i][0], i_condition_points[i][1], color='red', s=100, label='Condition Point' if i==0 else "")
+
+    plt.tight_layout()
+    plt.grid(True)
+    plt.xlabel('Time')
+    plt.ylabel('Trajectory Value')
+    plt.title(f'Model Prediction vs Actual Trajectory for Trajectory Index {j} (Modality {"1" if j < Y1_Paired.shape[0] + Y1_Aux.shape[0] else "2"}) with Context {context[0][0].numpy()} ({"Aux" if context[0].numpy() in [C1_Aux[0].numpy(), C2_Aux[0].numpy()] else "Paired"})')
+    plt.legend()
 plt.savefig(f'save/{data_type}/{run_id}/prediction_vs_actual.png', dpi=150)
 plt.show()
