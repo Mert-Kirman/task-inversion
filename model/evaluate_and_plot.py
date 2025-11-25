@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import model_mock_perfectly_paired as dual_enc_dec_cnmp
 import model_predict
 
-run_id = "run_1763498820.025824"
+run_id = "run_1764097767.0409448"
 
 # Load the trained model
 data_type = "perfect_paired/sin"
@@ -58,6 +58,8 @@ C1_Aux = torch.load(f"{data_folder}/context_modality_1_aux_data.pt", weights_onl
 C2_Paired = torch.load(f"{data_folder}/context_modality_2_paired_data.pt", weights_only=True)
 C2_Aux = torch.load(f"{data_folder}/context_modality_2_aux_data.pt", weights_only=True)
 
+C1_Paired, C1_Aux, C2_Paired, C2_Aux = C1_Paired.float(), C1_Aux.float(), C2_Paired.float(), C2_Aux.float()
+
 Y1 = torch.cat((Y1_Paired, Y1_Aux, Y2_Paired, Y2_Aux), dim=0) # Y1 is the forward trajectories of modality 1 and modality 2
 Y2 = torch.cat((Y1_Inverse_Paired, Y1_Inverse_Aux, Y2_Inverse_Paired, Y2_Inverse_Aux), dim=0) # Y2 is the inverse trajectories of modality 1 and modality 2
 C = torch.cat((C1_Paired, C1_Aux, C2_Paired, C2_Aux), dim=0)
@@ -94,7 +96,7 @@ target_inverse_global_idx = Y1_Paired.shape[0] + Y1_Aux.shape[0] + Y2_Paired.sha
 
 inverse_modality_2_aux_traj = Y2_Aux[inverse_modality_2_aux_idx:inverse_modality_2_aux_idx+1]  # Shape: [1, time_len, d_y2]
 context = C2_Aux[inverse_modality_2_aux_idx:inverse_modality_2_aux_idx+1]  # Shape: [1, d_param]
-context = context.unsqueeze(1).expand(-1, time_len, -1)  # Shape: [1, time_len, d_param]
+# context = context.unsqueeze(1).expand(-1, time_len, -1)  # Shape: [1, time_len, d_param]
 x_target = X1[Y2_Paired.shape[0] + inverse_modality_2_aux_idx:Y2_Paired.shape[0] + inverse_modality_2_aux_idx + 1]  # Shape: [1, time_len, 1]
 
 # Create observation (using the forward trajectory)
@@ -105,6 +107,7 @@ i_condition_points = [[t, Y1[target_inverse_global_idx, i:i+1]] for t,i in zip(t
 
 print(f'Condition points (time, y): {i_condition_points}')
 print(f'Context: {context}')
+print(f'Context shape: {context.shape}')
 
 # Predict inverse
 with torch.no_grad():

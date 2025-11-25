@@ -13,7 +13,15 @@ class DualEncoderDecoder(nn.Module):
         self.d_y1 = d_y1
         self.d_y2 = d_y2
         self.param_dim = d_param
-        self.learned_param_dim = 1
+        self.embedding_dim = 16
+
+        # --- Parameter Embedder ---
+        self.param_embedder = nn.Sequential(
+            nn.Linear(d_param, 64),
+            nn.ReLU(),
+            nn.Linear(64, self.embedding_dim) 
+            # Output is now a vector of size 16, not a scalar of size 1
+        )
 
         # --- Encoders with BatchNorm and Dropout ---
         # Linear -> BatchNorm -> Activation -> Dropout
@@ -33,7 +41,7 @@ class DualEncoderDecoder(nn.Module):
 
         # --- Decoders with BatchNorm and Dropout ---
         self.decoder1 = nn.Sequential(
-            nn.Linear(d_x + 128 + self.learned_param_dim, 256), nn.LayerNorm(256), nn.ReLU(), 
+            nn.Linear(d_x + 128 + self.embedding_dim, 256), nn.LayerNorm(256), nn.ReLU(), 
             # nn.Linear(512, 256), nn.LayerNorm(256), nn.ReLU(),
             nn.Linear(256, 256), nn.LayerNorm(256), nn.ReLU(),
             nn.Linear(256, 128), nn.LayerNorm(128), nn.ReLU(),
@@ -42,7 +50,7 @@ class DualEncoderDecoder(nn.Module):
         )
 
         self.decoder2 = nn.Sequential(
-            nn.Linear(d_x + 128 + self.learned_param_dim, 256), nn.LayerNorm(256), nn.ReLU(), 
+            nn.Linear(d_x + 128 + self.embedding_dim, 256), nn.LayerNorm(256), nn.ReLU(), 
             # nn.Linear(512, 256), nn.LayerNorm(256), nn.ReLU(),
             nn.Linear(256, 256), nn.LayerNorm(256), nn.ReLU(),
             nn.Linear(256, 128), nn.LayerNorm(128), nn.ReLU(),
@@ -54,13 +62,23 @@ class DualEncoderDecoder(nn.Module):
         # obs: (batch_size, max_obs_num, 2*d_x + d_y1 + d_y2) 
         # mask: (batch_size, max_obs_num, 1)
         # x_tar: (batch_size, num_tar, d_x)
+        # params: (batch_size, 1, d_param)
 
         mask_forward, mask_inverse = mask[0], mask[1] # (batch_size, max_obs_num, max_obs_num)
 
         obs_f = obs[:, :, :self.d_x+self.d_y1]  # (batch_size, max_obs_num, d_x + d_y1)
         obs_i = obs[:, :, self.d_x+self.d_y1:2*self.d_x+self.d_y1+self.d_y2]  # (batch_size, max_obs_num, d_x + d_y2)
 
-        param_loc = params[:, :, [0]] # (batch_size, num_tar, 4)
+        # Embed the parameters
+        # params is (batch, 1, d_param). Reshape to (batch, d_param) for the linear layer
+        p_input = params[:, :, [0]] # (batch_size, num_tar, 1)
+        
+        # Pass through the MLP embedder
+        p_embedded = self.param_embedder(p_input) # Output: (batch_size, num_tar, embedding_dim) (12, 1, 16)
+        
+        # Expand to match the number of target points
+        # (batch, num_tar, embedding_dim)
+        p_expanded = p_embedded.expand(-1, x_tar.shape[1], -1)
 
         r1 = self.encoder1(obs_f)  # (batch_size, max_obs_num, 256)
         masked_r1 = torch.bmm(mask_forward, r1) # (batch_size, max_obs_num, 256)
@@ -90,10 +108,12 @@ class DualEncoderDecoder(nn.Module):
             latent = L_I
 
 
-        param = param_loc.expand(-1, x_tar.shape[1], -1)  # (batch_size, num_tar, 1)
-        # param = param.expand(-1, x_tar.shape[1], -1)  # (batch_size, num_tar, d_param)
-        latent_with_par = torch.cat((latent, param), dim=-1)  # (batch_size, num_tar, 128 + 1)
-        concat = torch.cat((latent_with_par, x_tar), dim=-1)  # (batch_size, num_tar, 128 + d_x) 
+        # Concatenate with the EMBEDDED parameter
+        # latent is (batch, num_tar, 128)
+        # p_expanded is (batch, num_tar, 16)
+        latent_with_par = torch.cat((latent, p_expanded), dim=-1)  # (batch_size, num_tar, 128 + 16)
+        
+        concat = torch.cat((latent_with_par, x_tar), dim=-1)  # (batch_size, num_tar, 128 + 16 + d_x)
         output1 = self.decoder1(concat)  # (batch_size, num_tar, 2*d_y1)
 
         if extra_pass:

@@ -94,6 +94,7 @@ if __name__ == "__main__":
     C2_Aux = torch.load(f"{data_folder}/context_modality_2_aux_data.pt", weights_only=True)
 
     C = torch.cat((C1_Paired, C1_Aux, C2_Paired, C2_Aux), dim=0)
+    C = C.float()
 
     # Normalize Y1 and Y2 together
     for dim in range(Y1.shape[2]):
