@@ -103,6 +103,11 @@ if __name__ == "__main__":
         Y1[:, :, dim] = (Y1[:, :, dim] - min_dim) / (max_dim - min_dim)
         Y2[:, :, dim] = (Y2[:, :, dim] - min_dim) / (max_dim - min_dim)
 
+    # Normalize context to [0, 1] range
+    C_min = C.min()
+    C_max = C.max()
+    C = (C - C_min) / (C_max - C_min)
+
     num_demo = Y1.shape[0]
     time_len = Y1.shape[1]
 
@@ -136,7 +141,7 @@ if __name__ == "__main__":
     EPOCHS = 60_001
     learning_rate = 3e-4
     model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-2)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
     scheduler = LambdaLR(optimizer, lr_lambda=lambda epoch: 1 if epoch < 40_000 else 5e-1)
 
     training_errors, validation_errors, losses = train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True)

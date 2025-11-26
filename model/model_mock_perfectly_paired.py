@@ -18,6 +18,7 @@ class DualEncoderDecoder(nn.Module):
         # --- Parameter Embedder ---
         self.param_embedder = nn.Sequential(
             nn.Linear(d_param, 64),
+            nn.LayerNorm(64),
             nn.ReLU(),
             nn.Linear(64, self.embedding_dim) 
             # Output is now a vector of size 16, not a scalar of size 1

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import model_mock_perfectly_paired as dual_enc_dec_cnmp
 import model_predict
 
-run_id = "run_1764097767.0409448"
+run_id = "run_1764155951.470604"
 
 # Load the trained model
 data_type = "perfect_paired/sin"
@@ -71,6 +71,14 @@ for dim in range(Y1.shape[2]):
     Y1[:, :, dim] = (Y1[:, :, dim] - min_dim) / (max_dim - min_dim)
     Y2[:, :, dim] = (Y2[:, :, dim] - min_dim) / (max_dim - min_dim)
 
+# Normalize context to [0, 1] range
+C_min = C.min()
+C_max = C.max()
+C = (C - C_min) / (C_max - C_min)
+
+auxiliary_context_values = [(C1_Aux[0] - C_min)/(C_max - C_min), (C2_Aux[0] - C_min)/(C_max - C_min)]
+print(auxiliary_context_values)
+
 num_demo = Y1.shape[0]
 time_len = Y1.shape[1]
 d_x = 1
@@ -125,7 +133,7 @@ for j in range(Y1.shape[0]):
     plt.grid(True)
     plt.xlabel('Time')
     plt.ylabel('Trajectory Value')
-    plt.title(f'Model Prediction vs Actual Trajectory for Trajectory Index {j} (Modality {"1" if j < Y1_Paired.shape[0] + Y1_Aux.shape[0] else "2"}) with Context {context[0][0].numpy()} ({"Aux" if context[0].numpy() in [C1_Aux[0].numpy(), C2_Aux[0].numpy()] else "Paired"})')
+    plt.title(f'Model Prediction vs Actual Trajectory for Trajectory Index {j} (Modality {"1" if j < Y1_Paired.shape[0] + Y1_Aux.shape[0] else "2"}) with Context {context[0][0].numpy()} ({"Aux" if context[0].numpy() in auxiliary_context_values else "Paired"})')
     plt.legend()
 plt.savefig(f'save/{data_type}/{run_id}/prediction_vs_actual.png', dpi=150)
 plt.show()
