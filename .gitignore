@@ -1,3 +1,6 @@
 __pycache__/
 save/
 logs/
+*.h5
+*.npy
+*DS_Store

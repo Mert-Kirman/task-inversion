@@ -20,7 +20,8 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
     os.makedirs(f'logs/{data_type}/run_{run_id}/', exist_ok=True)
     sys.stdout = open(f'logs/{data_type}/run_{run_id}/train_log.txt', 'w')
 
-    errors = []
+    training_errors = []
+    validation_errors = []
     losses = []
 
     unpaired_traj = True 
@@ -33,7 +34,7 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
             if p < 0.20:
                 extra_pass = True
 
-        obs, params, mask, x_tar, y_tar_f, y_tar_i, extra_pass = dual_enc_dec_cnmp.get_training_sample(extra_pass, valid_inverses, demo_data, OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len)
+        obs, params, mask, x_tar, y_tar_f, y_tar_i, extra_pass = dual_enc_dec_cnmp.get_training_sample(extra_pass, valid_inverses, validation_indices, demo_data, OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len)
         optimizer.zero_grad()
         output, L_F, L_I, extra_pass = model(obs, params, mask, x_tar, extra_pass)
         
@@ -46,22 +47,26 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
         optimizer.step()
         scheduler.step()
 
-        if i > 0 and i % 200 == 0:
-            epoch_val_error = validate_model.val_only_extra(model, validation_indices, i, demo_data, 
-                                                            d_x, d_y1, d_y2)
-            errors.append(epoch_val_error)
+        if i > 0 and i % 1000 == 0:
+            epoch_train_error = validate_model.val_only_extra(model, training_indices, i, demo_data, d_x, d_y1, d_y2)
+            training_errors.append(epoch_train_error)
+
+            epoch_val_error = validate_model.val_only_extra(model, validation_indices, i, demo_data, d_x, d_y1, d_y2)
+            validation_errors.append(epoch_val_error)
+            
             losses.append(loss.item())
 
-            if min(errors) == errors[-1]:
-                # Save errors and losses
-                np.save(f'{save_folder}/run_{run_id}/errors.npy', np.array(errors))
-                np.save(f'{save_folder}/run_{run_id}/losses.npy', np.array(losses))
+            # Save errors and losses
+            np.save(f'{save_folder}/run_{run_id}/training_errors_mse.npy', np.array(training_errors))
+            np.save(f'{save_folder}/run_{run_id}/validation_errors_mse.npy', np.array(validation_errors))
+            np.save(f'{save_folder}/run_{run_id}/losses_log_prob.npy', np.array(losses))
 
+            if min(validation_errors) == validation_errors[-1]:
                 # Save model
                 tqdm.write(f"Run ID: {run_id}, Saved model epoch {i}, Train loss: {loss.item():6f}, Validation error: {epoch_val_error:6f}")
                 torch.save(model.state_dict(), f'{save_folder}/run_{run_id}/perfectly_paired.pth')
 
-    return errors, losses
+    return training_errors, validation_errors, losses
 
 
 if __name__ == "__main__":
@@ -69,20 +74,27 @@ if __name__ == "__main__":
     data_folder = f"mock_data/{data_type}"
 
     # Load trajectory(sensorimotor) data
-    Y1_Paired = torch.load(f"{data_folder}/forward_data.pt", weights_only=True)
-    Y2_Paired = torch.load(f"{data_folder}/inverse_data.pt", weights_only=True)
+    Y1_Paired = torch.load(f"{data_folder}/forward_modality_1_paired_data.pt", weights_only=True)
+    Y1_Aux = torch.load(f"{data_folder}/forward_modality_1_aux_data.pt", weights_only=True)
+    Y1_Inverse_Paired = torch.load(f"{data_folder}/inverse_modality_1_paired_data.pt", weights_only=True)
+    Y1_Inverse_Aux = torch.load(f"{data_folder}/inverse_modality_1_aux_data.pt", weights_only=True)
 
-    Y1_Extra = torch.load(f"{data_folder}/forward_extra_data.pt", weights_only=True)
-    Y2_Extra = torch.load(f"{data_folder}/inverse_extra_data.pt", weights_only=True)
+    Y2_Paired = torch.load(f"{data_folder}/forward_modality_2_paired_data.pt", weights_only=True)
+    Y2_Aux = torch.load(f"{data_folder}/forward_modality_2_aux_data.pt", weights_only=True)
+    Y2_Inverse_Paired = torch.load(f"{data_folder}/inverse_modality_2_paired_data.pt", weights_only=True)
+    Y2_Inverse_Aux = torch.load(f"{data_folder}/inverse_modality_2_aux_data.pt", weights_only=True)
 
-    Y1 = torch.cat((Y1_Paired, Y1_Extra), dim=0)
-    Y2 = torch.cat((Y2_Paired, Y2_Extra), dim=0)
+    Y1 = torch.cat((Y1_Paired, Y1_Aux, Y2_Paired, Y2_Aux), dim=0) # Y1 is the forward trajectories of modality 1 and modality 2
+    Y2 = torch.cat((Y1_Inverse_Paired, Y1_Inverse_Aux, Y2_Inverse_Paired, Y2_Inverse_Aux), dim=0) # Y2 is the inverse trajectories of modality 1 and modality 2
 
     # Load context data (Task Parameters)
-    C1_Paired = torch.load(f"{data_folder}/context_paired_data.pt", weights_only=True)
-    C1_Extra = torch.load(f"{data_folder}/context_extra_data.pt", weights_only=True)
+    C1_Paired = torch.load(f"{data_folder}/context_modality_1_paired_data.pt", weights_only=True)
+    C1_Aux = torch.load(f"{data_folder}/context_modality_1_aux_data.pt", weights_only=True)
+    C2_Paired = torch.load(f"{data_folder}/context_modality_2_paired_data.pt", weights_only=True)
+    C2_Aux = torch.load(f"{data_folder}/context_modality_2_aux_data.pt", weights_only=True)
 
-    C = torch.cat((C1_Paired, C1_Extra), dim=0)
+    C = torch.cat((C1_Paired, C1_Aux, C2_Paired, C2_Aux), dim=0)
+    C = C.float()
 
     # Normalize Y1 and Y2 together
     for dim in range(Y1.shape[2]):
@@ -91,13 +103,18 @@ if __name__ == "__main__":
         Y1[:, :, dim] = (Y1[:, :, dim] - min_dim) / (max_dim - min_dim)
         Y2[:, :, dim] = (Y2[:, :, dim] - min_dim) / (max_dim - min_dim)
 
+    # Normalize context to [0, 1] range
+    C_min = C.min()
+    C_max = C.max()
+    C = (C - C_min) / (C_max - C_min)
+
     num_demo = Y1.shape[0]
     time_len = Y1.shape[1]
 
     X1 = torch.linspace(0, 1, time_len).repeat(num_demo, 1).reshape(num_demo, -1, 1)
     X2 = torch.linspace(0, 1, time_len).repeat(num_demo, 1).reshape(num_demo, -1, 1)
 
-    valid_inverses = [True for i in range(Y1_Paired.shape[0])] + [False for i in range(Y1_Extra.shape[0])]
+    valid_inverses = [True for i in range(Y1_Paired.shape[0])] + [False for i in range(Y1_Aux.shape[0])] + [True for i in range(Y2_Paired.shape[0])] + [False for i in range(Y2_Aux.shape[0])]
 
     d_x = 1
     d_param = C.shape[1]
@@ -107,8 +124,9 @@ if __name__ == "__main__":
     OBS_MAX = 10
     d_N = num_demo
 
-    # last 20 traj are extra
-    validation_indices = [69, 71, 74, 76]     
+    all_indices = set(range(num_demo))
+    validation_indices = [4, 11, 16, 22] # Indices of trajectories used for validation
+    training_indices = list(all_indices - set(validation_indices)) # Indices of trajectories used for training
 
     demo_data = [X1, X2, Y1, Y2, C]
 
@@ -120,10 +138,10 @@ if __name__ == "__main__":
     losses = []
     errors_with_latent = []
 
-    EPOCHS = 60_000
-    learning_rate = 1e-3
+    EPOCHS = 60_001
+    learning_rate = 3e-4
     model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-2)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
     scheduler = LambdaLR(optimizer, lr_lambda=lambda epoch: 1 if epoch < 40_000 else 5e-1)
 
-    errors, losses = train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True)
+    training_errors, validation_errors, losses = train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True)
