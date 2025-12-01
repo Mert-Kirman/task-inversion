@@ -14,10 +14,13 @@ if __name__ == '__main__':
 
     robot_state_sensor_names = ['compensated_base_force', 'compensated_base_torque', 'gripper_positions', 'joint_efforts', 'joint_positions', 'joint_velocities', 'measured_force', 'measured_torque', 'pose', 'velocity']
     robot_state_sensor_values = {}
+    timestamps_sensor_values = {}
     for sensor in robot_state_sensor_names:
         indexes = np.where((data['timestamps'][sensor] >= start) & (data['timestamps'][sensor] <= end))
         sensor_data = data['robot_state'][sensor][indexes]
         robot_state_sensor_values[sensor] = sensor_data
+        timestamps_sensor_values[sensor] = data['timestamps'][sensor][indexes]
         print(f"{sensor}: {sensor_data.shape}")
         
     np.save(f'data/raw_high_level_actions/{file_name}_high_level_action_{high_level_action_KEY}_robot_state.npy', robot_state_sensor_values)
+    np.save(f'data/raw_high_level_actions/{file_name}_high_level_action_{high_level_action_KEY}_timestamps.npy', timestamps_sensor_values)
