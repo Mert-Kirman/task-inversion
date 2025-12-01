@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import loss_utils
+import model.loss_utils as loss_utils
 import torchvision.transforms as T
 from torchvision.transforms import functional as F
 

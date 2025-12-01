@@ -1,6 +1,6 @@
 import numpy as np
-import utils
-import model_predict
+import model.utils as utils
+import model.model_predict as model_predict
 import torch
 
 def val(model, validation_indices, epoch_count, demo_data, d_x, d_y1, d_y2, d_param, time_len=200):
@@ -47,8 +47,8 @@ def val(model, validation_indices, epoch_count, demo_data, d_x, d_y1, d_y2, d_pa
 
 
 import numpy as np
-import utils
-import model_predict
+import model.utils as utils
+import model.model_predict as model_predict
 
 def val_only_extra(model, validation_indices, epoch_count, demo_data, d_x, d_y1, d_y2, 
                    time_len=200, plot_freq=200_000):

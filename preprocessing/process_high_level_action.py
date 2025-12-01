@@ -18,29 +18,36 @@ def interpolate_sensor_data(sensor_values, timestamps, target_timestamps, kind='
     # Handle 1D case (single feature)
     if sensor_values.ndim == 1:
         sensor_values = sensor_values.reshape(-1, 1)
-    
-    # Sort and remove duplicates
-    # 1. Sort by timestamps
-    sorted_indices = np.argsort(timestamps)
-    timestamps = timestamps[sorted_indices]
-    sensor_values = sensor_values[sorted_indices]
 
-    # 2. Find unique timestamps; If duplicates exist, we keep the first occurrence
-    unique_timestamps, unique_indices = np.unique(timestamps, return_index=True)
+    # --- 1. Filter out NaNs from the RAW input ---
+    valid_mask = ~np.isnan(sensor_values).any(axis=1)
+    clean_timestamps = timestamps[valid_mask]
+    clean_values = sensor_values[valid_mask]
     
-    # Filter values to match unique timestamps
-    clean_timestamps = timestamps[unique_indices]
-    clean_values = sensor_values[unique_indices]
+    # --- 2. Sort and remove duplicates ---
+    sorted_indices = np.argsort(clean_timestamps)
+    clean_timestamps = clean_timestamps[sorted_indices]
+    clean_values = clean_values[sorted_indices]
+
+    unique_timestamps, unique_indices = np.unique(clean_timestamps, return_index=True)
+    clean_timestamps = clean_timestamps[unique_indices]
+    clean_values = clean_values[unique_indices]
 
     n_features = clean_values.shape[1]
     interpolated_values = np.zeros((len(target_timestamps), n_features))
     
     # Interpolate each feature separately
     for i in range(n_features):
+        # --- 3. Define Fill Values for Edges ---
+        # If target_time < start_time, use the first valid value (clean_values[0, i])
+        # If target_time > end_time, use the last valid value (clean_values[-1, i])
+        edge_fill_values = (clean_values[0, i], clean_values[-1, i])
+        
         interpolator = interp1d(clean_timestamps, clean_values[:, i], 
                                kind=kind, 
                                bounds_error=False, 
-                               fill_value='extrapolate')
+                               fill_value=edge_fill_values)
+        
         interpolated_values[:, i] = interpolator(target_timestamps)
     
     return interpolated_values.squeeze()
