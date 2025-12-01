@@ -4,3 +4,4 @@ logs/
 *.h5
 *.npy
 *DS_Store
+data_plots/

@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.interpolate import interp1d
+import os
 
 def interpolate_sensor_data(sensor_values, timestamps, target_timestamps, kind='cubic'):
     """
@@ -18,12 +19,25 @@ def interpolate_sensor_data(sensor_values, timestamps, target_timestamps, kind='
     if sensor_values.ndim == 1:
         sensor_values = sensor_values.reshape(-1, 1)
     
-    n_features = sensor_values.shape[1]
+    # Sort and remove duplicates
+    # 1. Sort by timestamps
+    sorted_indices = np.argsort(timestamps)
+    timestamps = timestamps[sorted_indices]
+    sensor_values = sensor_values[sorted_indices]
+
+    # 2. Find unique timestamps; If duplicates exist, we keep the first occurrence
+    unique_timestamps, unique_indices = np.unique(timestamps, return_index=True)
+    
+    # Filter values to match unique timestamps
+    clean_timestamps = timestamps[unique_indices]
+    clean_values = sensor_values[unique_indices]
+
+    n_features = clean_values.shape[1]
     interpolated_values = np.zeros((len(target_timestamps), n_features))
     
     # Interpolate each feature separately
     for i in range(n_features):
-        interpolator = interp1d(timestamps, sensor_values[:, i], 
+        interpolator = interp1d(clean_timestamps, clean_values[:, i], 
                                kind=kind, 
                                bounds_error=False, 
                                fill_value='extrapolate')
@@ -64,7 +78,7 @@ def synchronize_multiple_modalities(modality_files, target_n_samples=100):
     for modality_name, (values, timestamps) in modalities.items():
         print(f"Interpolating {modality_name}...")
         synchronized_data[modality_name] = interpolate_sensor_data(
-            values, timestamps, common_timestamps, kind='cubic'
+            values, timestamps, common_timestamps, kind='linear'
         )
     
     return synchronized_data, common_timestamps
@@ -83,8 +97,13 @@ if __name__ == '__main__':
         modality_files[sensor] = (sensor_values, timestamps)
         
     synchronized_data, common_timestamps = synchronize_multiple_modalities(modality_files, target_n_samples=1000)
-    
+
     print("Synchronized Data Shapes:")
     for sensor in robot_state_sensor_names:
         print(f"{sensor}: {synchronized_data[sensor].shape}")
     
+    processed_data_dir = 'data/processed_high_level_actions'
+    print(f"\nSaving synchronized data to {processed_data_dir}...")
+    os.makedirs(processed_data_dir, exist_ok=True)
+    np.save(os.path.join(processed_data_dir, 'synchronized_high_level_action_31_robot_state.npy'), synchronized_data)
+    np.save(os.path.join(processed_data_dir, 'synchronized_high_level_action_31_timestamps.npy'), common_timestamps)
