@@ -84,6 +84,13 @@ if __name__ == '__main__':
     # Get a list of available H5 files
     h5_folder_path = f'data/original_reassemble_data/'
     available_files = [f for f in os.listdir(h5_folder_path) if f.endswith('.h5')]
+
+    # Desired action-object combination
+    action_object_combo = {
+        b'Pick round peg 4.': 'pick/round_peg_4', 
+        b'Pick square peg 4.': 'pick/square_peg_4'
+        }
+
     robot_state_sensor_names = ['compensated_base_force', 'compensated_base_torque', 'gripper_positions', 'joint_efforts', 
                                 'joint_positions', 'joint_velocities', 'measured_force', 'measured_torque', 'pose', 'velocity']
     
@@ -93,26 +100,27 @@ if __name__ == '__main__':
 
         segments_info = data.get('segments_info', None)
         for seg_key, seg_val in segments_info.items():
-            if seg_val.get('text') == b'Pick round peg 4.' and seg_val.get('success'):
-                high_level_action_KEY = seg_key
-                high_level_action = seg_val
-                start, end = high_level_action.get('start'), high_level_action.get('end')
-                
-                robot_state_sensor_values = {}
-                for sensor in robot_state_sensor_names:
-                    indexes = np.where((data['timestamps'][sensor] >= start) & (data['timestamps'][sensor] <= end))
-                    sensor_data = data['robot_state'][sensor][indexes]
-                    timestamps = data['timestamps'][sensor][indexes]
-                    robot_state_sensor_values[sensor] = (sensor_data, timestamps)
-                    print(f"{sensor}: {sensor_data.shape}")
-                
-                # Save robot state sensor values
-                robot_state_output_dir = 'data/raw_high_level_actions/pick/round_peg_4'
-                os.makedirs(robot_state_output_dir, exist_ok=True)
-                file_name_trimmed = file_name.replace('.h5', '')
-                np.save(f'{robot_state_output_dir}/{file_name_trimmed}_{high_level_action_KEY}.npy', robot_state_sensor_values)
+            for desired_action, desired_action_folder_name in action_object_combo.items():
+                if seg_val.get('text') == desired_action and seg_val.get('success'):
+                    high_level_action_KEY = seg_key
+                    high_level_action = seg_val
+                    start, end = high_level_action.get('start'), high_level_action.get('end')
+                    
+                    robot_state_sensor_values = {}
+                    for sensor in robot_state_sensor_names:
+                        indexes = np.where((data['timestamps'][sensor] >= start) & (data['timestamps'][sensor] <= end))
+                        sensor_data = data['robot_state'][sensor][indexes]
+                        timestamps = data['timestamps'][sensor][indexes]
+                        robot_state_sensor_values[sensor] = (sensor_data, timestamps)
+                        print(f"{sensor}: {sensor_data.shape}")
+                    
+                    # Save robot state sensor values
+                    robot_state_output_dir = f'data/raw_high_level_actions/{desired_action_folder_name}'
+                    os.makedirs(robot_state_output_dir, exist_ok=True)
+                    file_name_trimmed = file_name.replace('.h5', '')
+                    np.save(f'{robot_state_output_dir}/{file_name_trimmed}_{high_level_action_KEY}.npy', robot_state_sensor_values)
 
-                # # Save video segments (UNCOMMENT TO ENABLE VIDEO SAVING)
-                # video_output_dir = f'data/videos/{file_name_trimmed}_{high_level_action_KEY}'
-                # save_video_segment(data, start, end, video_output_dir)
+                    # # Save video segments (UNCOMMENT TO ENABLE VIDEO SAVING)
+                    # video_output_dir = f'data/videos/{file_name_trimmed}_{high_level_action_KEY}'
+                    # save_video_segment(data, start, end, video_output_dir)
     
