@@ -3,5 +3,6 @@ save/
 logs/
 *.h5
 *.npy
+*.mp4
 *DS_Store
 data_plots/

@@ -28,24 +28,22 @@ def plot_interpolated_values(timestamps, sensor_values, target_timestamps, inter
 if __name__ == "__main__":
     # Get raw data
     high_level_action_dict_raw = np.load('data/raw_high_level_actions/2025-01-09-13-59-54_high_level_action_31_robot_state.npy', allow_pickle=True).item()
-    timestamps_dict_raw = np.load('data/raw_high_level_actions/2025-01-09-13-59-54_high_level_action_31_timestamps.npy', allow_pickle=True).item()
     
     robot_state_sensor_names = ['compensated_base_force', 'compensated_base_torque', 'gripper_positions', 'joint_efforts', 'joint_positions', 'joint_velocities', 'measured_force', 'measured_torque', 'pose', 'velocity']
     
     modality_files_raw = {}
     for sensor in robot_state_sensor_names:
-        sensor_values = high_level_action_dict_raw[sensor]
-        timestamps = timestamps_dict_raw[sensor]
+        sensor_values = high_level_action_dict_raw[sensor][0]
+        timestamps = high_level_action_dict_raw[sensor][1]
         modality_files_raw[sensor] = (sensor_values, timestamps)
 
     # Get interpolated data
     high_level_action_dict_interpolated = np.load('data/processed_high_level_actions/synchronized_high_level_action_31_robot_state.npy', allow_pickle=True).item()
-    timestamps_dict_interpolated = np.load('data/processed_high_level_actions/synchronized_high_level_action_31_timestamps.npy', allow_pickle=True)
     
     modality_files_interpolated = {}
     for sensor in robot_state_sensor_names:
-        sensor_values = high_level_action_dict_interpolated[sensor]
-        timestamps = timestamps_dict_interpolated
+        sensor_values = high_level_action_dict_interpolated[sensor][0]
+        timestamps = high_level_action_dict_interpolated[sensor][1]
         modality_files_interpolated[sensor] = (sensor_values, timestamps)
 
     # Plot comparisons

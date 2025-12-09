@@ -13,11 +13,10 @@ import model.single_high_level_model.dual_enc_dec_model as dual_enc_dec_cnmp
 import model.model_predict as model_predict
 
 # Configuration
-run_id = "run_1764627050.657804"
+run_id = "run_1765282476.084181"
 save_path = f"model/single_high_level_model/save/{run_id}"
 data_path = "data/processed_high_level_actions"
 file_name_robot = "synchronized_high_level_action_31_robot_state.npy"
-file_name_time = "synchronized_high_level_action_31_timestamps.npy"
 
 def load_and_process_data():
     """
@@ -25,7 +24,6 @@ def load_and_process_data():
     """
     print("Loading data...")
     high_level_action_dict = np.load(os.path.join(data_path, file_name_robot), allow_pickle=True).item()
-    timestamps_dict = np.load(os.path.join(data_path, file_name_time), allow_pickle=True)
     
     robot_state_sensor_names = ['compensated_base_force', 'compensated_base_torque', 'gripper_positions', 
                                 'joint_efforts', 'joint_positions', 'joint_velocities', 
@@ -33,8 +31,8 @@ def load_and_process_data():
     
     modality_files = {}
     for sensor in robot_state_sensor_names:
-        sensor_values = high_level_action_dict[sensor]
-        timestamps = timestamps_dict
+        sensor_values = high_level_action_dict[sensor][0]
+        timestamps = high_level_action_dict[sensor][1]
         modality_files[sensor] = (sensor_values, timestamps)
 
     selected_sensors = ['joint_positions', 'pose', 'gripper_positions', 'compensated_base_force']

@@ -84,7 +84,8 @@ if __name__ == '__main__':
     for sensor in robot_state_sensor_names:
         indexes = np.where((data['timestamps'][sensor] >= start) & (data['timestamps'][sensor] <= end))
         sensor_data = data['robot_state'][sensor][indexes]
-        robot_state_sensor_values[sensor] = sensor_data
+        timestamps = data['timestamps'][sensor][indexes]
+        robot_state_sensor_values[sensor] = (sensor_data, timestamps)
         print(f"{sensor}: {sensor_data.shape}")
         
         
