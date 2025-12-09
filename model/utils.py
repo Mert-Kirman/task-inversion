@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 import time
-import dual_enc_dec_cnmp
+import model.dual_enc_dec_cnmp as dual_enc_dec_cnmp
 
 def gaussian_with_offset(param, noise = 0):
     def dist(x, param, noise = 0):

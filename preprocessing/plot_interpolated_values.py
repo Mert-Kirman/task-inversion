@@ -22,7 +22,7 @@ def plot_interpolated_values(timestamps, sensor_values, target_timestamps, inter
     plt.legend()
     plt.grid()
     plt.savefig(os.path.join(data_plots_dir, f'interpolated_{modality_name}.png'))
-    plt.show()
+    # plt.show()
     plt.close()
 
 if __name__ == "__main__":
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         modality_files_interpolated[sensor] = (sensor_values, timestamps)
 
     # Plot comparisons
-    sensors_to_plot = ['joint_positions']
+    sensors_to_plot = ['pose']
     data_plots_dir = 'data_plots/plots_interpolated_values'
     os.makedirs(data_plots_dir, exist_ok=True)
     for sensor in sensors_to_plot:
@@ -63,6 +63,11 @@ if __name__ == "__main__":
             # Interpolated data
             sensor_values_interpolated, timestamps_interpolated = modality_files_interpolated[sensor]
             sensor_values_interpolated_dim = sensor_values_interpolated[:, dim]
+
+            if np.isnan(sensor_values_interpolated_dim).any():
+                print(f"There are NaN values in {modality_name}, skipping plot.")
+                print(sensor_values_interpolated_dim)
+                continue
             
             plot_interpolated_values(
                 timestamps_raw,
