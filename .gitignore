@@ -5,4 +5,4 @@ logs/
 *.npy
 *.mp4
 *DS_Store
-data_plots/
+data/plots/
