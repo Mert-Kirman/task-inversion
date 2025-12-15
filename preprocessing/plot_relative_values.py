@@ -66,10 +66,14 @@ if __name__ == "__main__":
                 # --- STEP 1: TRANSFORM POSE (Position & Orientation) ---
                 pose_data = high_level_action_dict_interpolated['pose'][0] # Shape (1000, 7) -> [x, y, z, qw, qx, qy, qz]
                 pose_timestamps = high_level_action_dict_interpolated['pose'][1]
+
+                num_points = pose_data.shape[0]
+                search_start_idx = int(num_points * 0.60)
                 
                 # 1. Find grasp index (lowest Z)
                 zs = pose_data[:, 2]
-                grasp_index = np.argmin(zs)
+                local_min_idx = np.argmin(zs[search_start_idx:]) 
+                grasp_index = search_start_idx + local_min_idx
                 
                 # --- A. Relative Position ---
                 object_pos = pose_data[grasp_index, :3] # [x, y, z]
