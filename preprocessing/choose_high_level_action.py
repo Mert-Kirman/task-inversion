@@ -120,7 +120,23 @@ if __name__ == '__main__':
                     file_name_trimmed = file_name.replace('.h5', '')
                     np.save(f'{robot_state_output_dir}/{file_name_trimmed}_{high_level_action_KEY}.npy', robot_state_sensor_values)
 
-                    # # Save video segments (UNCOMMENT TO ENABLE VIDEO SAVING)
-                    # video_output_dir = f'data/videos/{file_name_trimmed}_{high_level_action_KEY}'
-                    # save_video_segment(data, start, end, video_output_dir)
+    # Save video segments for a specific file
+    target_files_for_video_extraction = [
+        "2025-01-10-15-34-33.h5",
+        ]
     
+    for target_file_for_video_extraction in target_files_for_video_extraction:
+        if target_file_for_video_extraction in available_files:
+            print(f"\nExtracting video segments from {target_file_for_video_extraction}...")
+            h5_file_path = h5_folder_path + target_file_for_video_extraction
+            data = load_h5_file(h5_file_path, decode=False)
+            segments_info = data.get('segments_info', None)
+            for seg_key, seg_val in segments_info.items():
+                for desired_action, desired_action_folder_name in action_object_combo.items():
+                    if seg_val.get('text') == desired_action and seg_val.get('success'):
+                        high_level_action_KEY = seg_key
+                        high_level_action = seg_val
+                        start, end = high_level_action.get('start'), high_level_action.get('end')
+                        
+                        video_output_dir = f'data/videos/{target_file_for_video_extraction.replace(".h5","")}_{high_level_action_KEY}'
+                        save_video_segment(data, start, end, video_output_dir)
