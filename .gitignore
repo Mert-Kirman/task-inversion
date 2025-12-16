@@ -6,3 +6,4 @@ logs/
 *.mp4
 *DS_Store
 data/plots/
+data/plots_relative_full/

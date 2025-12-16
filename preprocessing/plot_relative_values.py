@@ -93,14 +93,6 @@ if __name__ == "__main__":
                 
                 # Store back
                 modality_files_interpolated['pose'] = (relative_pose, pose_timestamps)
-                
-                # Load other sensors
-                for sensor in robot_state_sensor_names:
-                    if sensor == 'pose': continue
-                    if sensor in high_level_action_dict_interpolated:
-                        val = high_level_action_dict_interpolated[sensor][0]
-                        ts = high_level_action_dict_interpolated[sensor][1]
-                        modality_files_interpolated[sensor] = (val, ts)
 
                 action_object_pairs.append((file_name, modality_files_interpolated))
 
@@ -141,7 +133,7 @@ if __name__ == "__main__":
                         plt.plot(timestamps_interpolated, sensor_values_dim, label=f'{file_name}', alpha=0.7)
                         
                         plot_count += 1
-                        if plot_count == 3: break 
+                        if plot_count == 8: break 
                     
                     plt.title(f'{modality_name}{dim_label}')
                     plt.xlabel('Time')
