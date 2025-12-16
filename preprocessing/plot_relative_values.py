@@ -146,3 +146,11 @@ if __name__ == "__main__":
                 plt.savefig(os.path.join(data_plots_dir, f'relative_{sensor}_full.png'))
                 plt.close()
                 print(f"Saved plot to {data_plots_dir}")
+
+            # --- STEP 3: SAVE PROCESSED FILES ---
+            processed_save_dir = f'data/processed_relative_high_level_actions/{action}/{obj}'
+            os.makedirs(processed_save_dir, exist_ok=True)
+            for file_name, modality_files in action_object_pairs:
+                save_path = os.path.join(processed_save_dir, file_name)
+                np.save(save_path, modality_files)
+            print(f"Saved processed files to {processed_save_dir}")
