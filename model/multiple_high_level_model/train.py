@@ -67,8 +67,7 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
             np.save(f'{save_folder}/run_{run_id}/validation_errors_mse.npy', np.array(validation_errors))
             np.save(f'{save_folder}/run_{run_id}/losses_log_prob.npy', np.array(losses))
 
-            # if min(validation_errors) == validation_errors[-1]:
-            if min(training_errors) == training_errors[-1]:
+            if min(validation_errors) == validation_errors[-1]:
                 # Save model
                 tqdm.write(f"Run ID: {run_id}, Saved model epoch {i}, Train loss: {loss.item():6f}, Validation error: {epoch_val_error:6f}")
                 torch.save(model.state_dict(), f'{save_folder}/run_{run_id}/perfectly_paired.pth')
@@ -108,29 +107,48 @@ if __name__ == "__main__":
     # Stack all trajectories to get shape (56, 1000, 3)
     Y1 = torch.tensor(np.stack(trajectory_arrays, axis=0), dtype=torch.float32)
     Y2 = Y1.detach().clone()
-    C = torch.zeros((Y1.shape[0], 1))  # Dummy context with correct batch size
+    
+    # # Use Start Position as Context (Geometric Context)
+    # # We take X and Y from the first timestamp (t=0)
+    # # Shape: (56, 2)
+    # C = Y1[:, 0, :2].clone() 
 
-    # # Normalize Y1 and Y2 together
-    # for dim in range(Y1.shape[2]):
-    #     min_dim = torch.minimum(Y1[:, :, dim].min(), Y2[:, :, dim].min())
-    #     max_dim = torch.maximum(Y1[:, :, dim].max(), Y2[:, :, dim].max())
-    #     denominator = max_dim - min_dim
+    # Normalization Logic
+    print("Normalizing Data (Min-Max)...")
+    
+    # 1. Normalize Trajectories (Y)
+    Y_min_vals = []
+    Y_max_vals = []
+    
+    for dim in range(Y1.shape[2]):
+        min_dim = torch.minimum(Y1[:, :, dim].min(), Y2[:, :, dim].min())
+        max_dim = torch.maximum(Y1[:, :, dim].max(), Y2[:, :, dim].max())
         
-    #     # Handle constant features to prevent DivByZero
-    #     if denominator == 0:
-    #         # If max == min, the feature is constant. 
-    #         # We can set the normalized value to 0.0 (or 0.5) 
-    #         # and avoid the division.
-    #         Y1[:, :, dim] = 0.0 
-    #         Y2[:, :, dim] = 0.0
-    #     else:
-    #         Y1[:, :, dim] = (Y1[:, :, dim] - min_dim) / denominator
-    #         Y2[:, :, dim] = (Y2[:, :, dim] - min_dim) / denominator
+        # Save for later use/inference
+        Y_min_vals.append(min_dim)
+        Y_max_vals.append(max_dim)
+        
+        denominator = max_dim - min_dim
+        
+        if denominator == 0:
+            Y1[:, :, dim] = 0.0 
+            Y2[:, :, dim] = 0.0
+        else:
+            Y1[:, :, dim] = (Y1[:, :, dim] - min_dim) / denominator
+            Y2[:, :, dim] = (Y2[:, :, dim] - min_dim) / denominator
 
-    # # # Normalize context to [0, 1] range
-    # # C_min = C.min()
-    # # C_max = C.max()
-    # # C = (C - C_min) / (C_max - C_min)
+    C = torch.zeros((Y1.shape[0], 1))
+    # # 2. Normalize Context (C)
+    # C_min_val = C.min(dim=0)[0]
+    # C_max_val = C.max(dim=0)[0]
+    # C_denom = C_max_val - C_min_val
+    
+    # # Avoid div by zero in context
+    # C_denom[C_denom == 0] = 1.0 
+    
+    # C = (C - C_min_val) / C_denom
+    
+    # print(f"Context Normalized. Range: [{C.min()}, {C.max()}]")
 
     num_demo = Y1.shape[0]
     time_len = Y1.shape[1]
@@ -157,6 +175,13 @@ if __name__ == "__main__":
     save_folder = f"model/multiple_high_level_model/save"
     run_id = time.time()
     os.makedirs(f'{save_folder}/run_{run_id}', exist_ok=True)
+
+    # Save Normalization Constants for Inference
+    print("Saving Normalization Stats...")
+    np.save(f'{save_folder}/run_{run_id}/normalization_stats.npy', {
+        'Y_min': Y_min_vals, 'Y_max': Y_max_vals,
+        # 'C_min': C_min_val, 'C_max': C_max_val
+    })
 
     errors = []
     losses = []
