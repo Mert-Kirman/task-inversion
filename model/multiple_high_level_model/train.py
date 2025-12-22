@@ -40,7 +40,7 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
             if p < 0.20:
                 extra_pass = True
 
-        obs, params, mask, x_tar, y_tar_f, y_tar_i, extra_pass = dual_enc_dec_cnmp.get_training_sample(extra_pass, valid_inverses, validation_indices, demo_data, OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len)
+        obs, params, mask, x_tar, y_tar_f, y_tar_i, extra_pass = dual_enc_dec_cnmp.get_training_sample(extra_pass, valid_inverses, validation_indices, demo_data, OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len, batch_size=1)
         optimizer.zero_grad()
         output, L_F, L_I, extra_pass = model(obs, params, mask, x_tar, extra_pass)
         
@@ -188,7 +188,7 @@ if __name__ == "__main__":
 
     EPOCHS = 60_001
     learning_rate = 3e-4
-    model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
+    model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param, dropout_p=[0.0, 0.0])
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
     scheduler = LambdaLR(optimizer, lr_lambda=lambda epoch: 1 if epoch < 40_000 else 5e-1)
 

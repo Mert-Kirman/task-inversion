@@ -6,7 +6,7 @@ from torchvision.transforms import functional as F
 
 
 class DualEncoderDecoder(nn.Module):
-    def __init__(self, d_x, d_y1, d_y2, d_param, dropout_p=[0.05, 0.1]):
+    def __init__(self, d_x, d_y1, d_y2, d_param, dropout_p=[0.0, 0.0]):
         super(DualEncoderDecoder, self).__init__()
 
         self.d_x = d_x
@@ -15,45 +15,48 @@ class DualEncoderDecoder(nn.Module):
         self.param_dim = d_param
         self.embedding_dim = 16
 
+        # --- Unpack dropout probabilities ---
+        p_enc = dropout_p[0] # Probability for Encoder
+        p_dec = dropout_p[1] # Probability for Decoder
+
         # --- Parameter Embedder ---
         self.param_embedder = nn.Sequential(
             nn.Linear(d_param, 64),
             nn.LayerNorm(64),
             nn.ReLU(),
-            nn.Linear(64, self.embedding_dim) 
-            # Output is now a vector of size 16, not a scalar of size 1
+            nn.Linear(64, self.embedding_dim)
         )
 
         # --- Encoders with BatchNorm and Dropout ---
         # Linear -> BatchNorm -> Activation -> Dropout
         self.encoder1 = nn.Sequential(
-            nn.Linear(d_x + d_y1, 64), nn.LayerNorm(64), nn.ReLU(),
-            nn.Linear(64, 64), nn.LayerNorm(64), nn.ReLU(),
-            nn.Linear(64, 128), nn.LayerNorm(128), nn.ReLU(),
+            nn.Linear(d_x + d_y1, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(p_enc),
+            nn.Linear(64, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(p_enc),
+            nn.Linear(64, 128), nn.LayerNorm(128), nn.ReLU(), nn.Dropout(p_enc),
             nn.Linear(128, 256)
         )
 
         self.encoder2 = nn.Sequential(
-            nn.Linear(d_x + d_y2, 64), nn.LayerNorm(64), nn.ReLU(),
-            nn.Linear(64, 64), nn.LayerNorm(64), nn.ReLU(),
-            nn.Linear(64, 128), nn.LayerNorm(128), nn.ReLU(),
+            nn.Linear(d_x + d_y2, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(p_enc),
+            nn.Linear(64, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(p_enc),
+            nn.Linear(64, 128), nn.LayerNorm(128), nn.ReLU(), nn.Dropout(p_enc),
             nn.Linear(128, 256)
         )
 
         # --- Decoders with BatchNorm and Dropout ---
         self.decoder1 = nn.Sequential(
-            nn.Linear(d_x + 256 + self.embedding_dim, 256), nn.LayerNorm(256), nn.ReLU(), 
-            nn.Linear(256, 256), nn.LayerNorm(256), nn.ReLU(),
-            nn.Linear(256, 128), nn.LayerNorm(128), nn.ReLU(),
-            nn.Linear(128, 64), nn.LayerNorm(64), nn.ReLU(),
+            nn.Linear(d_x + 256 + self.embedding_dim, 256), nn.LayerNorm(256), nn.ReLU(), nn.Dropout(p_dec), 
+            nn.Linear(256, 256), nn.LayerNorm(256), nn.ReLU(), nn.Dropout(p_dec),
+            nn.Linear(256, 128), nn.LayerNorm(128), nn.ReLU(), nn.Dropout(p_dec),
+            nn.Linear(128, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(p_dec),
             nn.Linear(64, (d_y1)*2)
         )
 
         self.decoder2 = nn.Sequential(
-            nn.Linear(d_x + 256 + self.embedding_dim, 256), nn.LayerNorm(256), nn.ReLU(), 
-            nn.Linear(256, 256), nn.LayerNorm(256), nn.ReLU(),
-            nn.Linear(256, 128), nn.LayerNorm(128), nn.ReLU(),
-            nn.Linear(128, 64), nn.LayerNorm(64), nn.ReLU(),
+            nn.Linear(d_x + 256 + self.embedding_dim, 256), nn.LayerNorm(256), nn.ReLU(), nn.Dropout(p_dec), 
+            nn.Linear(256, 256), nn.LayerNorm(256), nn.ReLU(), nn.Dropout(p_dec),
+            nn.Linear(256, 128), nn.LayerNorm(128), nn.ReLU(), nn.Dropout(p_dec),
+            nn.Linear(128, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(p_dec),
             nn.Linear(64, (d_y2)*2)
         )
 
@@ -123,11 +126,9 @@ class DualEncoderDecoder(nn.Module):
         return torch.cat((output1, output2), dim=-1), L_F, L_I, extra_pass
     
 def get_training_sample(extra_pass, valid_inverses, validation_indices, demo_data, 
-                        OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len):
+                        OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len, batch_size=1):
 
     X1, X2, Y1, Y2, C = demo_data
-
-    batch_size = 1
     
     traj_multinom = torch.ones(d_N) # multinomial distribution for trajectories
 
