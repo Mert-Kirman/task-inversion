@@ -69,8 +69,8 @@ class DualEncoderDecoder(nn.Module):
         obs_i = obs[:, :, self.d_x+self.d_y1:2*self.d_x+self.d_y1+self.d_y2]  # (batch_size, max_obs_num, d_x + d_y2)
 
         # Embed the parameters
-        # params is (batch, 1, d_param). Reshape to (batch, d_param) for the linear layer
-        p_input = params[:, :, [0]] # (batch_size, num_tar, 1)
+        # params is (batch, 1, d_param).
+        p_input = params
         
         # Pass through the MLP embedder
         p_embedded = self.param_embedder(p_input) # Output: (batch_size, num_tar, embedding_dim) (12, 1, 16)
@@ -127,7 +127,7 @@ def get_training_sample(extra_pass, valid_inverses, validation_indices, demo_dat
 
     X1, X2, Y1, Y2, C = demo_data
 
-    batch_size = 1
+    batch_size = 16
     
     traj_multinom = torch.ones(d_N) # multinomial distribution for trajectories
 

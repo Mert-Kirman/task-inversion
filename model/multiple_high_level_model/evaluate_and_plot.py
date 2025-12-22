@@ -14,7 +14,7 @@ import model.multiple_high_level_model.dual_enc_dec_model as dual_enc_dec_cnmp
 import model.model_predict as model_predict
 
 # ================= CONFIGURATION =================
-run_id = "run_1765972600.9041212"  # Update this to your latest run ID
+run_id = "run_1765978334.9419122"  # Update this to your latest run ID
 save_path = f"model/multiple_high_level_model/save/{run_id}"
 data_path = "data/processed_relative_high_level_actions/pick/round_peg_4"
 model_name = "perfectly_paired.pth"
@@ -35,7 +35,7 @@ def load_normalization_stats():
     y_min = torch.stack(stats['Y_min'])
     y_max = torch.stack(stats['Y_max'])
     
-    # Check if context stats exist (for when you enable geometric context later)
+    # Check if context stats exist
     c_min = stats.get('C_min', None)
     c_max = stats.get('C_max', None)
     
@@ -86,13 +86,10 @@ def load_all_data():
     Y_raw = torch.tensor(np.stack(trajectory_list, axis=0), dtype=torch.float32)
     Y2_raw = Y_raw.detach().clone()
     
-    # --- CONTEXT SETUP (MATCHING TRAIN.PY) ---
+    # --- CONTEXT SETUP ---
     
-    # Option A: Zero Context (Current)
-    C = torch.zeros((Y_raw.shape[0], 1))
-    
-    # Option B: Geometric Context (Future Use - Uncomment Later)
-    # C = Y_raw[:, 0, :2].clone() # Take Start X, Start Y
+    # Geometric Context
+    C = Y_raw[:, 0, :2].clone() # Take Start X, Start Y
     
     return Y_raw, Y2_raw, C, file_names
 
@@ -137,7 +134,7 @@ def plot_training_progress():
         print("Training logs not found, skipping progress plot.")
 
 def evaluate_random_trajectories(num_samples=3):
-    # 1. Load Norm Stats
+    # Load Norm Stats
     y_min, y_max, c_min, c_max = load_normalization_stats()
     
     # 2. Load Raw Data
@@ -150,13 +147,10 @@ def evaluate_random_trajectories(num_samples=3):
     time_len = Y1_raw.shape[1] 
     num_demos = Y1_raw.shape[0]
 
-    # --- NORMALIZE CONTEXT (Future Use) ---
-    # Since C is currently zeros, this logic is skipped or trivial.
-    # When you enable Geometric Context, you MUST uncomment normalization here too.
-    
+    # --- NORMALIZE CONTEXT ---
     C_normalized = C_raw.clone()
-    # if c_min is not None and c_max is not None:
-    #     C_normalized = normalize_data(C_raw, c_min, c_max)
+    if c_min is not None and c_max is not None:
+        C_normalized = normalize_data(C_raw, c_min, c_max)
 
     # 3. Load Model
     model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
@@ -199,7 +193,7 @@ def evaluate_random_trajectories(num_samples=3):
             t_val = time_steps[t_idx]
             
             # Get raw value
-            y_val_raw = Y1_raw[traj_idx, t_idx:t_idx+1] 
+            y_val_raw = Y1_raw[traj_idx, t_idx:t_idx+1] # Shape (1, d_y1)
             
             # NORMALIZE IT
             y_val_norm = normalize_data(y_val_raw, y_min, y_max)
@@ -207,7 +201,7 @@ def evaluate_random_trajectories(num_samples=3):
             condition_points.append([t_val, y_val_norm])
         
         # Expand Context
-        curr_context = C_normalized[traj_idx].view(1, 1, -1).repeat(1, time_len, 1)
+        curr_context = C_normalized[traj_idx]
 
         # --- B. Run Inference (In Normalized Space) ---
         with torch.no_grad():
@@ -268,4 +262,4 @@ def evaluate_random_trajectories(num_samples=3):
 
 if __name__ == "__main__":
     plot_training_progress()
-    evaluate_random_trajectories(num_samples=8)
+    evaluate_random_trajectories(num_samples=56)

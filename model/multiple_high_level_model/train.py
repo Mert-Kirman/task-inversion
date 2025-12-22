@@ -15,7 +15,7 @@ import numpy as np
 import math
 import importlib
 import model.validate_model as validate_model
-import model.single_high_level_model.dual_enc_dec_model as dual_enc_dec_cnmp
+import model.multiple_high_level_model.dual_enc_dec_model as dual_enc_dec_cnmp
 import model.utils as utils
 from tqdm import tqdm
 from torch.optim.lr_scheduler import LambdaLR
@@ -108,10 +108,10 @@ if __name__ == "__main__":
     Y1 = torch.tensor(np.stack(trajectory_arrays, axis=0), dtype=torch.float32)
     Y2 = Y1.detach().clone()
     
-    # # Use Start Position as Context (Geometric Context)
-    # # We take X and Y from the first timestamp (t=0)
-    # # Shape: (56, 2)
-    # C = Y1[:, 0, :2].clone() 
+    # Use Start Position as Context (Geometric Context)
+    # We take X and Y from the first timestamp (t=0)
+    # Shape: (56, 2)
+    C = Y1[:, 0, :2].clone() 
 
     # Normalization Logic
     print("Normalizing Data (Min-Max)...")
@@ -137,18 +137,17 @@ if __name__ == "__main__":
             Y1[:, :, dim] = (Y1[:, :, dim] - min_dim) / denominator
             Y2[:, :, dim] = (Y2[:, :, dim] - min_dim) / denominator
 
-    C = torch.zeros((Y1.shape[0], 1))
-    # # 2. Normalize Context (C)
-    # C_min_val = C.min(dim=0)[0]
-    # C_max_val = C.max(dim=0)[0]
-    # C_denom = C_max_val - C_min_val
+    # 2. Normalize Context (C)
+    C_min_val = C.min(dim=0)[0]
+    C_max_val = C.max(dim=0)[0]
+    C_denom = C_max_val - C_min_val
     
-    # # Avoid div by zero in context
-    # C_denom[C_denom == 0] = 1.0 
+    # Avoid div by zero in context
+    C_denom[C_denom == 0] = 1.0 
     
-    # C = (C - C_min_val) / C_denom
+    C = (C - C_min_val) / C_denom
     
-    # print(f"Context Normalized. Range: [{C.min()}, {C.max()}]")
+    print(f"Context Normalized. Range: [{C.min()}, {C.max()}]")
 
     num_demo = Y1.shape[0]
     time_len = Y1.shape[1]
@@ -180,7 +179,7 @@ if __name__ == "__main__":
     print("Saving Normalization Stats...")
     np.save(f'{save_folder}/run_{run_id}/normalization_stats.npy', {
         'Y_min': Y_min_vals, 'Y_max': Y_max_vals,
-        # 'C_min': C_min_val, 'C_max': C_max_val
+        'C_min': C_min_val, 'C_max': C_max_val
     })
 
     errors = []
