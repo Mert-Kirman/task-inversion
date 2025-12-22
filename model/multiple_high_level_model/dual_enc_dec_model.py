@@ -127,7 +127,7 @@ def get_training_sample(extra_pass, valid_inverses, validation_indices, demo_dat
 
     X1, X2, Y1, Y2, C = demo_data
 
-    batch_size = 16
+    batch_size = 1
     
     traj_multinom = torch.ones(d_N) # multinomial distribution for trajectories
 

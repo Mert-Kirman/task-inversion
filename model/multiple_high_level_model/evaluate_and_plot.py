@@ -14,7 +14,7 @@ import model.multiple_high_level_model.dual_enc_dec_model as dual_enc_dec_cnmp
 import model.model_predict as model_predict
 
 # ================= CONFIGURATION =================
-run_id = "run_1765978334.9419122"  # Update this to your latest run ID
+run_id = "run_1766408493.649868"
 save_path = f"model/multiple_high_level_model/save/{run_id}"
 data_path = "data/processed_relative_high_level_actions/pick/round_peg_4"
 model_name = "perfectly_paired.pth"
@@ -137,7 +137,7 @@ def evaluate_random_trajectories(num_samples=3):
     # Load Norm Stats
     y_min, y_max, c_min, c_max = load_normalization_stats()
     
-    # 2. Load Raw Data
+    # Load Raw Data
     Y1_raw, Y2_raw, C_raw, file_names = load_all_data()
     
     d_x = 1
@@ -152,7 +152,7 @@ def evaluate_random_trajectories(num_samples=3):
     if c_min is not None and c_max is not None:
         C_normalized = normalize_data(C_raw, c_min, c_max)
 
-    # 3. Load Model
+    # Load Model
     model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
     model_path = os.path.join(save_path, model_name)
     
@@ -164,16 +164,16 @@ def evaluate_random_trajectories(num_samples=3):
     model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     model.eval()
 
-    # 4. Select Random Indices
+    # Select Random Indices
     num_to_plot = min(num_samples, num_demos)
     random.seed(42) 
     indices = random.sample(range(num_demos), num_to_plot)
     
-    # 5. Define Condition Points (Start and Middle)
+    # Define Condition Points (Start and Middle)
     time_steps = np.linspace(0, 1, time_len)
     cond_step_indices = [0, time_len // 2] # Index 0 and 500
     
-    # 6. Plot Setup
+    # Plot Setup
     fig, axes = plt.subplots(num_to_plot, d_y1, figsize=(15, 4 * num_to_plot))
     if num_to_plot == 1: axes = np.expand_dims(axes, 0) 
 
@@ -181,7 +181,7 @@ def evaluate_random_trajectories(num_samples=3):
 
     for row_idx, traj_idx in enumerate(indices):
         
-        # --- A. Prepare Input for this Trajectory ---
+        # --- Prepare Input for this Trajectory ---
         curr_y_truth_raw = Y2_raw[traj_idx].numpy() # Ground truth (Raw Meters)
         curr_file_name = file_names[traj_idx]
         
@@ -203,39 +203,39 @@ def evaluate_random_trajectories(num_samples=3):
         # Expand Context
         curr_context = C_normalized[traj_idx]
 
-        # --- B. Run Inference (In Normalized Space) ---
+        # --- Run Inference (In Normalized Space) ---
         with torch.no_grad():
             means_norm, stds_norm = model_predict.predict_inverse(
                 model, time_len, curr_context, condition_points, d_x, d_y1, d_y2
             )
             
-        # --- C. Denormalize Output (Back to Meters) ---
+        # --- Denormalize Output (Back to Meters) ---
         means_pred = denormalize_data(means_norm, y_min, y_max)
         
         # Stds must be scaled by the range (max-min)
         stds_pred = stds_norm * (y_max - y_min)
 
-        # --- D. Plotting (In Physical Space) ---
+        # --- Plotting (In Physical Space) ---
         dim_labels = ["X (Position)", "Y (Position)", "Z (Position)"]
         
         for col_idx in range(d_y1):
             ax = axes[row_idx, col_idx]
             
-            # 1. Ground Truth (Raw)
+            # Ground Truth (Raw)
             ax.plot(time_steps, curr_y_truth_raw[:, col_idx], 
                     color='black', linestyle='-', linewidth=2, alpha=0.5, label='Ground Truth')
             
-            # 2. Prediction (Denormalized)
+            # Prediction (Denormalized)
             ax.plot(time_steps, means_pred[:, col_idx].numpy(), 
                     color='blue', linestyle='--', linewidth=2, label='Prediction')
             
-            # 3. Uncertainty
+            # Uncertainty
             sigma = stds_pred[:, col_idx].numpy()
             mean_curve = means_pred[:, col_idx].numpy()
             ax.fill_between(time_steps, mean_curve - 2*sigma, mean_curve + 2*sigma, 
                             color='blue', alpha=0.1, label='Uncertainty (2$\sigma$)')
             
-            # 4. Condition Points (Plotting the RAW values used to generate cond points)
+            # Condition Points (Plotting the RAW values used to generate cond points)
             for t_idx in cond_step_indices:
                 t_c = time_steps[t_idx]
                 val_c = Y1_raw[traj_idx, t_idx, col_idx] # Plot raw ground truth point
@@ -262,4 +262,4 @@ def evaluate_random_trajectories(num_samples=3):
 
 if __name__ == "__main__":
     plot_training_progress()
-    evaluate_random_trajectories(num_samples=56)
+    evaluate_random_trajectories(num_samples=8)
