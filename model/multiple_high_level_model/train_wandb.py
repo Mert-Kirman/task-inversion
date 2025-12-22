@@ -146,7 +146,7 @@ def train():
         scheduler.step()
 
         # Logging & Validation
-        if i % 1000 == 0:
+        if i > 0 and i % 1000 == 0:
             train_err = validate_model.val_only_extra(model, training_indices, i, demo_data, d_x, d_y1, d_y2, time_len=time_len)
             val_err = validate_model.val_only_extra(model, validation_indices, i, demo_data, d_x, d_y1, d_y2, time_len=time_len)
             
