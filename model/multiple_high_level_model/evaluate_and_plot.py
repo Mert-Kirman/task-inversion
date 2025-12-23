@@ -177,8 +177,6 @@ def evaluate_random_trajectories(num_samples=3):
     indices = random.sample(range(num_demos), num_to_plot)
     
     # 5. Define Condition Points
-    # For INVERSE prediction (Place), we usually condition on the Start (t=0)
-    # The start of 'Place' is effectively the end of 'Insert'
     time_steps = np.linspace(0, 1, time_len)
     cond_step_indices = [300] 
     
@@ -193,12 +191,8 @@ def evaluate_random_trajectories(num_samples=3):
         # --- A. Prepare Ground Truth ---
         curr_y_truth_raw = Y2_raw[traj_idx].numpy() # Place Action (Inverse)
         
-        # --- B. Prepare Input (Conditioning on PLACE action) ---
-        # The model is predicting Y2 (Place) given Y1 (Insert) information is implied by context? 
-        # Actually, in DualEncDec, "Inverse" prediction usually conditions on Y2 points.
-        # But if you want to test zero-shot generalization from context:
-        # We give it Context (which carries the target location) + Start Point of Place.
-        
+        # --- B. Prepare Input (Conditioning on Insert action) ---
+        # The model is predicting Y2 (Place) given Y1 (Insert)
         condition_points = []
         for t_idx in cond_step_indices:
             t_val = time_steps[t_idx]
