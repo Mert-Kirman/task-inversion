@@ -7,4 +7,5 @@ logs/
 *DS_Store
 data/plots/
 data/plots_relative_full/
+data/paired_trajectories/
 wandb/
