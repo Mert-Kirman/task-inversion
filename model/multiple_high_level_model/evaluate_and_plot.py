@@ -14,9 +14,12 @@ import model.multiple_high_level_model.dual_enc_dec_model as dual_enc_dec_cnmp
 import model.model_predict as model_predict
 
 # ================= CONFIGURATION =================
-run_id = "run_1766408493.649868"
+run_id = "run_1766501551.670611"
 save_path = f"model/multiple_high_level_model/save/{run_id}"
-data_path = "data/processed_relative_high_level_actions/pick/round_peg_4"
+
+# POINT TO THE PAIRED DATA FOLDER
+data_path = "data/paired_trajectories_insert_place" 
+
 model_name = "perfectly_paired.pth"
 
 # Dimensions used in training
@@ -31,11 +34,17 @@ def load_normalization_stats():
         sys.exit(1)
     
     stats = np.load(stats_path, allow_pickle=True).item()
-    # stats['Y_min'] is a list of tensors, convert to single tensor for easier math
-    y_min = torch.stack(stats['Y_min'])
-    y_max = torch.stack(stats['Y_max'])
     
-    # Check if context stats exist
+    # Extract Y stats
+    # Check if they are lists or tensors (depends on how train.py saved them)
+    if isinstance(stats['Y_min'], list):
+        y_min = torch.stack(stats['Y_min'])
+        y_max = torch.stack(stats['Y_max'])
+    else:
+        y_min = stats['Y_min']
+        y_max = stats['Y_max']
+    
+    # Extract Context stats
     c_min = stats.get('C_min', None)
     c_max = stats.get('C_max', None)
     
@@ -52,46 +61,42 @@ def denormalize_data(tensor, min_val, max_val):
     denominator = max_val - min_val
     return tensor * denominator + min_val
 
-def load_all_data():
+def load_matched_data():
     """
-    Loads all .npy files. Returns RAW (un-normalized) data for plotting
-    and constructs the Context C.
+    Loads matched insert/place data and reconstructs the Averaged Context.
+    Returns RAW (un-normalized) tensors.
     """
-    print(f"Loading data from {data_path}...")
+    print(f"Loading paired data from {data_path}...")
     
-    if not os.path.exists(data_path):
-        print(f"Error: Data path {data_path} does not exist.")
+    insert_file = os.path.join(data_path, 'insert_all.npy')
+    place_file = os.path.join(data_path, 'place_all.npy')
+    
+    if not os.path.exists(insert_file) or not os.path.exists(place_file):
+        print(f"Error: Data files not found in {data_path}")
         sys.exit(1)
 
-    trajectory_list = []
-    file_names = []
+    # Load arrays of dicts
+    insert_data = np.load(insert_file, allow_pickle=True)
+    place_data = np.load(place_file, allow_pickle=True)
 
-    for file in sorted(os.listdir(data_path)):
-        if file.endswith(".npy"):
-            try:
-                full_path = os.path.join(data_path, file)
-                data_dict = np.load(full_path, allow_pickle=True).item()
-                pose_data = data_dict['pose'][0] 
-                trajectory_list.append(pose_data[:, :3]) # Keep X, Y, Z
-                file_names.append(file)
-            except Exception as e:
-                print(f"Skipping {file}: {e}")
+    # Extract Trajectories (Batch, Time, Dim)
+    # We take the first 3 dims (x, y, z)
+    Y1_list = [d['pose'][0][:, :3] for d in insert_data] 
+    Y2_list = [d['pose'][0][:, :3] for d in place_data]
 
-    if not trajectory_list:
-        print("No valid trajectories found.")
-        sys.exit(1)
-
-    # Stack into Tensor (Batch, Time, Dim)
-    # Shape: (56, 1000, 3)
-    Y_raw = torch.tensor(np.stack(trajectory_list, axis=0), dtype=torch.float32)
-    Y2_raw = Y_raw.detach().clone()
+    Y1_raw = torch.tensor(np.stack(Y1_list), dtype=torch.float32)
+    Y2_raw = torch.tensor(np.stack(Y2_list), dtype=torch.float32)
     
-    # --- CONTEXT SETUP ---
+    # --- CONTEXT RECONSTRUCTION (AVERAGED) ---
+    # C = (Insert_End_XY + Place_Start_XY) / 2
     
-    # Geometric Context
-    C = Y_raw[:, 0, :2].clone() # Take Start X, Start Y
+    insert_ends_xy = Y1_raw[:, -1, :2]
+    place_starts_xy = Y2_raw[:, 0, :2]
     
-    return Y_raw, Y2_raw, C, file_names
+    C_raw = (insert_ends_xy + place_starts_xy) / 2.0
+    
+    print(f"Data loaded. Found {Y1_raw.shape[0]} matched pairs.")
+    return Y1_raw, Y2_raw, C_raw
 
 def plot_training_progress():
     """Plots loss and error curves if they exist."""
@@ -134,11 +139,12 @@ def plot_training_progress():
         print("Training logs not found, skipping progress plot.")
 
 def evaluate_random_trajectories(num_samples=3):
-    # Load Norm Stats
+    # 1. Load Norm Stats
     y_min, y_max, c_min, c_max = load_normalization_stats()
     
-    # Load Raw Data
-    Y1_raw, Y2_raw, C_raw, file_names = load_all_data()
+    # 2. Load Raw Matched Data
+    # Y1 = Insert (Forward), Y2 = Place (Inverse)
+    Y1_raw, Y2_raw, C_raw = load_matched_data()
     
     d_x = 1
     d_y1 = Y1_raw.shape[2] 
@@ -148,11 +154,12 @@ def evaluate_random_trajectories(num_samples=3):
     num_demos = Y1_raw.shape[0]
 
     # --- NORMALIZE CONTEXT ---
+    # We must normalize C using the stats from training
     C_normalized = C_raw.clone()
     if c_min is not None and c_max is not None:
         C_normalized = normalize_data(C_raw, c_min, c_max)
 
-    # Load Model
+    # 3. Load Model
     model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
     model_path = os.path.join(save_path, model_name)
     
@@ -164,16 +171,18 @@ def evaluate_random_trajectories(num_samples=3):
     model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     model.eval()
 
-    # Select Random Indices
+    # 4. Select Random Indices
     num_to_plot = min(num_samples, num_demos)
     random.seed(42) 
     indices = random.sample(range(num_demos), num_to_plot)
     
-    # Define Condition Points (Start and Middle)
+    # 5. Define Condition Points
+    # For INVERSE prediction (Place), we usually condition on the Start (t=0)
+    # The start of 'Place' is effectively the end of 'Insert'
     time_steps = np.linspace(0, 1, time_len)
-    cond_step_indices = [0, time_len // 2] # Index 0 and 500
+    cond_step_indices = [300] 
     
-    # Plot Setup
+    # 6. Plot Setup
     fig, axes = plt.subplots(num_to_plot, d_y1, figsize=(15, 4 * num_to_plot))
     if num_to_plot == 1: axes = np.expand_dims(axes, 0) 
 
@@ -181,85 +190,76 @@ def evaluate_random_trajectories(num_samples=3):
 
     for row_idx, traj_idx in enumerate(indices):
         
-        # --- Prepare Input for this Trajectory ---
-        curr_y_truth_raw = Y2_raw[traj_idx].numpy() # Ground truth (Raw Meters)
-        curr_file_name = file_names[traj_idx]
+        # --- A. Prepare Ground Truth ---
+        curr_y_truth_raw = Y2_raw[traj_idx].numpy() # Place Action (Inverse)
         
-        # Create Condition Points (NORMALIZED)
-        # The model expects [0, 1] inputs, so we must normalize the raw points 
-        # using the saved stats before feeding them in.
+        # --- B. Prepare Input (Conditioning on PLACE action) ---
+        # The model is predicting Y2 (Place) given Y1 (Insert) information is implied by context? 
+        # Actually, in DualEncDec, "Inverse" prediction usually conditions on Y2 points.
+        # But if you want to test zero-shot generalization from context:
+        # We give it Context (which carries the target location) + Start Point of Place.
+        
         condition_points = []
         for t_idx in cond_step_indices:
             t_val = time_steps[t_idx]
             
-            # Get raw value
+            # Get raw value from Y1 (Insert)
             y_val_raw = Y1_raw[traj_idx, t_idx:t_idx+1] # Shape (1, d_y1)
             
-            # NORMALIZE IT
+            # Normalize
             y_val_norm = normalize_data(y_val_raw, y_min, y_max)
-            
             condition_points.append([t_val, y_val_norm])
         
-        # Expand Context
         curr_context = C_normalized[traj_idx]
 
-        # --- Run Inference (In Normalized Space) ---
+        # --- C. Run Inference (Inverse Mode) ---
         with torch.no_grad():
             means_norm, stds_norm = model_predict.predict_inverse(
                 model, time_len, curr_context, condition_points, d_x, d_y1, d_y2
             )
             
-        # --- Denormalize Output (Back to Meters) ---
+        # --- D. Denormalize Output ---
         means_pred = denormalize_data(means_norm, y_min, y_max)
-        
-        # Stds must be scaled by the range (max-min)
         stds_pred = stds_norm * (y_max - y_min)
 
-        # --- Plotting (In Physical Space) ---
-        dim_labels = ["X (Position)", "Y (Position)", "Z (Position)"]
+        # --- E. Plotting ---
+        dim_labels = ["X (Place)", "Y (Place)", "Z (Place)"]
         
         for col_idx in range(d_y1):
             ax = axes[row_idx, col_idx]
             
-            # Ground Truth (Raw)
+            # 1. Ground Truth
             ax.plot(time_steps, curr_y_truth_raw[:, col_idx], 
-                    color='black', linestyle='-', linewidth=2, alpha=0.5, label='Ground Truth')
+                    color='black', linestyle='-', linewidth=2, alpha=0.5, label='GT (Place)')
             
-            # Prediction (Denormalized)
+            # 2. Prediction
             ax.plot(time_steps, means_pred[:, col_idx].numpy(), 
-                    color='blue', linestyle='--', linewidth=2, label='Prediction')
+                    color='blue', linestyle='--', linewidth=2, label='Pred (Place)')
             
-            # Uncertainty
+            # 3. Uncertainty
             sigma = stds_pred[:, col_idx].numpy()
             mean_curve = means_pred[:, col_idx].numpy()
             ax.fill_between(time_steps, mean_curve - 2*sigma, mean_curve + 2*sigma, 
-                            color='blue', alpha=0.1, label='Uncertainty (2$\sigma$)')
-            
-            # Condition Points (Plotting the RAW values used to generate cond points)
-            for t_idx in cond_step_indices:
-                t_c = time_steps[t_idx]
-                val_c = Y1_raw[traj_idx, t_idx, col_idx] # Plot raw ground truth point
-                ax.scatter(t_c, val_c, color='red', s=60, zorder=5, edgecolors='white', linewidth=1.5)
+                            color='blue', alpha=0.1, label='Uncertainty')
 
             # Labels
             if row_idx == 0:
                 ax.set_title(dim_labels[col_idx], fontsize=14, fontweight='bold')
             if col_idx == 0:
-                ax.set_ylabel(f"Traj {traj_idx}\n({curr_file_name[:10]}...)", fontsize=10)
+                ax.set_ylabel(f"Pair {traj_idx}", fontsize=10)
 
             ax.grid(True, alpha=0.3)
             if row_idx == 0 and col_idx == 0:
                 ax.legend(fontsize='small', loc='best')
 
-    plt.suptitle(f"Multi-Trajectory Evaluation (Run {run_id})\nConditioned at t=0.0 and t=0.5 (Normalized Model)", fontsize=16)
+    plt.suptitle(f"Inverse Task (Place) Evaluation\nContext: Avg(Insert_End, Place_Start)", fontsize=16)
     plt.tight_layout()
     plt.subplots_adjust(top=0.92) 
     
-    save_file = f'{save_path}/eval_multi_traj_results_normalized.png'
+    save_file = f'{save_path}/eval_inverse_place.png'
     plt.savefig(save_file)
     print(f"Evaluation plots saved to {save_file}")
-    # plt.show()
 
 if __name__ == "__main__":
     plot_training_progress()
-    evaluate_random_trajectories(num_samples=8)
+    evaluate_random_trajectories(num_samples=56)

@@ -30,7 +30,8 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
     validation_errors = []
     losses = []
 
-    unpaired_traj = True 
+    # Batch Size = 1 was found to be best for this dataset size
+    BATCH_SIZE = 1
     
     for i in tqdm(range(EPOCHS)):
 
@@ -40,7 +41,13 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
             if p < 0.20:
                 extra_pass = True
 
-        obs, params, mask, x_tar, y_tar_f, y_tar_i, extra_pass = dual_enc_dec_cnmp.get_training_sample(extra_pass, valid_inverses, validation_indices, demo_data, OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len, batch_size=1)
+        # Note: We pass batch_size explicitly here
+        obs, params, mask, x_tar, y_tar_f, y_tar_i, extra_pass = dual_enc_dec_cnmp.get_training_sample(
+            extra_pass, valid_inverses, validation_indices, demo_data, 
+            OBS_MAX, d_N, d_x, d_y1, d_y2, d_param, time_len, 
+            batch_size=BATCH_SIZE
+        )
+        
         optimizer.zero_grad()
         output, L_F, L_I, extra_pass = model(obs, params, mask, x_tar, extra_pass)
         
@@ -48,7 +55,6 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
         loss.backward()
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-
 
         optimizer.step()
         scheduler.step()
@@ -76,55 +82,57 @@ def train(model, optimizer, scheduler, EPOCHS, unpaired_traj=True):
 
 
 if __name__ == "__main__":
-    data_folder = f"data/processed_relative_high_level_actions/pick/round_peg_4"
-    robot_state_sensor_names = ['compensated_base_force', 'compensated_base_torque', 'gripper_positions', 'joint_efforts', 'joint_positions', 'joint_velocities', 'measured_force', 'measured_torque', 'pose', 'velocity']
+    # --- LOAD MATCHED DATA ---
+    data_folder = "data/paired_trajectories_insert_place"
+    insert_path = os.path.join(data_folder, 'insert_all.npy')
+    place_path = os.path.join(data_folder, 'place_all.npy')
 
-    # Load trajectory(sensorimotor) data
-    trajectory_list = []
-    for file in os.listdir(data_folder):
-        if file.endswith(".npy"):
-            high_level_action_dict_interpolated = np.load(os.path.join(data_folder, file), allow_pickle=True).item()
-    
-            modality_files_interpolated = {}
-            for sensor in robot_state_sensor_names:
-                if sensor not in high_level_action_dict_interpolated:
-                    continue
-                sensor_values = high_level_action_dict_interpolated[sensor][0]
-                timestamps = high_level_action_dict_interpolated[sensor][1]
-                modality_files_interpolated[sensor] = (sensor_values, timestamps)
-            trajectory_list.append(modality_files_interpolated)
+    if not os.path.exists(insert_path) or not os.path.exists(place_path):
+        print(f"Error: Could not find matched files in {data_folder}")
+        sys.exit(1)
 
-    selected_sensors = ['pose']
-    
-    # Process each trajectory and stack them
-    trajectory_arrays = []
-    for trajectory in trajectory_list:
-        # Concatenate sensor values for this trajectory across selected sensors
-        sensor_data = [trajectory[sensor][0] for sensor in selected_sensors if sensor in trajectory]
-        trajectory_array = np.concatenate(sensor_data, axis=1)  # Shape: (1000, 7)
-        trajectory_arrays.append(trajectory_array[:, :3])  # Keep only position (x, y, z)
-    
-    # Stack all trajectories to get shape (56, 1000, 3)
-    Y1 = torch.tensor(np.stack(trajectory_arrays, axis=0), dtype=torch.float32)
-    Y2 = Y1.detach().clone()
-    
-    # Use Start Position as Context (Geometric Context)
-    # We take X and Y from the first timestamp (t=0)
-    # Shape: (56, 2)
-    C = Y1[:, 0, :2].clone() 
+    print(f"Loading paired data from {data_folder}...")
+    # These load as arrays of dictionaries (saved by match_and_stack_trajectories.py)
+    insert_data = np.load(insert_path, allow_pickle=True)
+    place_data = np.load(place_path, allow_pickle=True)
 
-    # Normalization Logic
+    # --- EXTRACT TRAJECTORIES (X, Y, Z) ---
+    # Extract 'pose' values from the dictionary and keep first 3 dims (x, y, z)
+    # The structure inside npy is: array([dict, dict, ...])
+    # dict['pose'][0] is the value array (Time, Dims)
+    
+    Y1_list = [d['pose'][0][:, :3] for d in insert_data] # Forward (Insert)
+    Y2_list = [d['pose'][0][:, :3] for d in place_data]  # Inverse (Place)
+
+    # Stack into tensors: (Batch, Time, Dims)
+    Y1 = torch.tensor(np.stack(Y1_list), dtype=torch.float32)
+    Y2 = torch.tensor(np.stack(Y2_list), dtype=torch.float32)
+    
+    print(f"Data Loaded. Y1 Shape: {Y1.shape}, Y2 Shape: {Y2.shape}")
+
+    # --- CREATE CONTEXT (AVERAGED GEOMETRY) ---
+    # Logic: C = (Insert_End_XY + Place_Start_XY) / 2
+    
+    insert_ends_xy = Y1[:, -1, :2]  # (N, 2)
+    place_starts_xy = Y2[:, 0, :2]  # (N, 2)
+    
+    C = (insert_ends_xy + place_starts_xy) / 2.0
+    
+    # Clone to detach from graph if needed (though no graph yet)
+    C = C.clone()
+    print(f"Context Created. Shape: {C.shape}")
+
+    # --- NORMALIZATION (Min-Max) ---
     print("Normalizing Data (Min-Max)...")
     
-    # 1. Normalize Trajectories (Y)
     Y_min_vals = []
     Y_max_vals = []
     
+    # Normalize Y1 and Y2 using combined min/max to preserve scale
     for dim in range(Y1.shape[2]):
         min_dim = torch.minimum(Y1[:, :, dim].min(), Y2[:, :, dim].min())
         max_dim = torch.maximum(Y1[:, :, dim].max(), Y2[:, :, dim].max())
         
-        # Save for later use/inference
         Y_min_vals.append(min_dim)
         Y_max_vals.append(max_dim)
         
@@ -137,37 +145,40 @@ if __name__ == "__main__":
             Y1[:, :, dim] = (Y1[:, :, dim] - min_dim) / denominator
             Y2[:, :, dim] = (Y2[:, :, dim] - min_dim) / denominator
 
-    # 2. Normalize Context (C)
+    # Normalize Context (C)
     C_min_val = C.min(dim=0)[0]
     C_max_val = C.max(dim=0)[0]
     C_denom = C_max_val - C_min_val
     
-    # Avoid div by zero in context
     C_denom[C_denom == 0] = 1.0 
     
     C = (C - C_min_val) / C_denom
     
     print(f"Context Normalized. Range: [{C.min()}, {C.max()}]")
 
+    # --- SETUP TRAINING VARIABLES ---
     num_demo = Y1.shape[0]
     time_len = Y1.shape[1]
 
+    # Create Time inputs (X)
     X1 = torch.linspace(0, 1, time_len).repeat(num_demo, 1).reshape(num_demo, -1, 1)
     X2 = torch.linspace(0, 1, time_len).repeat(num_demo, 1).reshape(num_demo, -1, 1)
 
-    valid_inverses = [True for _ in range(num_demo)]  # All trajectories have valid inverses in this setup
+    valid_inverses = [True for _ in range(num_demo)]
 
     d_x = 1
-    d_param = C.shape[1]
-    d_y1 = Y1.shape[2]
-    d_y2 = Y2.shape[2]
+    d_param = C.shape[1] # Should be 2 (avg_x, avg_y)
+    d_y1 = Y1.shape[2]   # 3 (x,y,z)
+    d_y2 = Y2.shape[2]   # 3 (x,y,z)
 
     OBS_MAX = 10
     d_N = num_demo
 
+    # Split Train/Val
     all_indices = set(range(num_demo))
-    validation_indices = [i for i in range(0, num_demo, 4)] # Indices of trajectories used for validation
-    training_indices = list(all_indices - set(validation_indices)) # Indices of trajectories used for training
+    # Using every 4th trajectory for validation
+    validation_indices = [i for i in range(0, num_demo, 4)]
+    training_indices = list(all_indices - set(validation_indices))
 
     demo_data = [X1, X2, Y1, Y2, C]
 
@@ -181,10 +192,6 @@ if __name__ == "__main__":
         'Y_min': Y_min_vals, 'Y_max': Y_max_vals,
         'C_min': C_min_val, 'C_max': C_max_val
     })
-
-    errors = []
-    losses = []
-    errors_with_latent = []
 
     EPOCHS = 60_001
     learning_rate = 3e-4
