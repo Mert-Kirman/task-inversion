@@ -10,10 +10,10 @@ OBJ_NAME = 'round_peg_4'
 
 # Paths to separate directories
 INSERT_DIR = os.path.join(BASE_DIR, 'insert', OBJ_NAME)
-REMOVE_DIR = os.path.join(BASE_DIR, 'remove', OBJ_NAME)
+PLACE_DIR = os.path.join(BASE_DIR, 'place', OBJ_NAME)
 
 # Output Paths
-OUTPUT_DIR = 'data/paired_trajectories'
+OUTPUT_DIR = 'data/paired_trajectories_insert_place'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 # =================================================
 
@@ -55,123 +55,126 @@ def load_endpoints(directory):
     return filenames, np.array(start_points), np.array(end_points), full_data
 
 def match_trajectories():
-    # Load Data
+    # 1. Load Data
     print("--- Loading Insert Data ---")
     ins_names, ins_starts, ins_ends, ins_data = load_endpoints(INSERT_DIR)
     
-    print("\n--- Loading Remove Data ---")
-    rem_names, rem_starts, rem_ends, rem_data = load_endpoints(REMOVE_DIR)
+    print("\n--- Loading Place Data ---")
+    place_names, place_starts, place_ends, place_data = load_endpoints(PLACE_DIR)
     
-    # Compute Cost Matrix
-    # We want to match: Insert START <--> Remove END
-    # This closes the geometric loop (Home -> Socket -> Home)
-    print("\n--- Computing Cost Matrix ---")
-    # cdist computes distance between every Insert Start and every Remove End
-    # Shape: (Num_Insert, Num_Remove)
-    cost_matrix = cdist(ins_starts, rem_ends, metric='euclidean')
+    # 2. Compute Cost Matrix
+    # LOGIC UPDATE: Match Insert END with Place START
+    # We only use X and Y dimensions (indices :2) for matching to be robust against Z-height differences
+    print("\n--- Computing Cost Matrix (Using X, Y dimensions only) ---")
+    
+    # insert_ends[:, :2] -> All End X,Y of inserts
+    # place_starts[:, :2] -> All Start X,Y of places
+    cost_matrix = cdist(ins_ends[:, :2], place_starts[:, :2], metric='euclidean')
     
     print(f"Cost Matrix Shape: {cost_matrix.shape}")
     
-    # Solve Assignment Problem (Hungarian Algorithm)
-    # linear_sum_assignment finds the indices that minimize the total cost.
-    # It automatically handles non-square matrices by ignoring extra rows/cols.
+    # 3. Solve Assignment Problem (Hungarian Algorithm)
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
     
     print(f"\nMatched {len(row_ind)} pairs.")
     
-    # Construct Paired Lists
+    # 4. Construct Paired Lists
     matched_inserts = []
-    matched_removes = []
-    matched_info = [] # To store filenames for verification
+    matched_places = []
+    matched_info = [] 
     
     for r, c in zip(row_ind, col_ind):
         # r is index in Insert list
-        # c is index in Remove list
+        # c is index in Place list
         
         matched_inserts.append(ins_data[r])
-        matched_removes.append(rem_data[c])
+        matched_places.append(place_data[c])
         
         # Calculate distance for logging
         dist = cost_matrix[r, c]
         matched_info.append({
             'insert_name': ins_names[r],
-            'remove_name': rem_names[c],
+            'place_name': place_names[c],
             'match_distance': dist
         })
         
-    # Save Stacked Data
-    # Stack dictionaries is hard, usually we save lists of dictionaries 
-    # OR we stack the sensor arrays if we know the structure.
-    # For simplicity/compatibility with your loader, let's save the list of dicts.
-    
+    # 5. Save Stacked Data
     save_path_ins = os.path.join(OUTPUT_DIR, 'insert_all.npy')
-    save_path_rem = os.path.join(OUTPUT_DIR, 'remove_all.npy')
+    save_path_place = os.path.join(OUTPUT_DIR, 'place_all.npy')
     save_path_meta = os.path.join(OUTPUT_DIR, 'pairing_info.npy')
     
     np.save(save_path_ins, np.array(matched_inserts))
-    np.save(save_path_rem, np.array(matched_removes))
+    np.save(save_path_place, np.array(matched_places))
     np.save(save_path_meta, matched_info)
     
     print(f"\nSaved matched data to {OUTPUT_DIR}")
     print(f"  - {save_path_ins} ({len(matched_inserts)} trajectories)")
-    print(f"  - {save_path_rem} ({len(matched_removes)} trajectories)")
+    print(f"  - {save_path_place} ({len(matched_places)} trajectories)")
     
-    # Verification Plot
-    # Plot the first 5 matches to visually verify "Loop Closure"
-    plot_verification(matched_inserts, matched_removes, 1)
+    # 6. Verification Plot
+    plot_verification(matched_inserts, matched_places, 10)
 
-def plot_verification(inserts, removes, num_plot=5):
+def plot_verification(inserts, places, num_plot=5):
     """
-    Plots the Insert (Green) and Remove (Red) trajectories.
-    If matched correctly, Green Start should be near Red End.
+    Plots the Insert (Green) and Place (Red) trajectories.
+    Logic Check: The END of Green should touch the START of Red.
     """
-    plt.figure(figsize=(15, 5))
+    plt.figure(figsize=(15, 6))
     
     # Plot X-Y Plane (Top-Down view of table)
     plt.subplot(1, 2, 1)
     
-    for i in range(num_plot):
+    for i in range(min(num_plot, len(inserts))):
         # Extract X and Y columns
         ins_pos = inserts[i]['pose'][0][:, :2]
-        rem_pos = removes[i]['pose'][0][:, :2]
+        place_pos = places[i]['pose'][0][:, :2]
         
         # Plot Trajectories
-        plt.plot(ins_pos[:, 0], ins_pos[:, 1], 'g-', alpha=0.5, label='Insert (Forward)' if i==0 else "")
-        plt.plot(rem_pos[:, 0], rem_pos[:, 1], 'r--', alpha=0.5, label='Remove (Inverse)' if i==0 else "")
+        # Insert: Forward (Green)
+        plt.plot(ins_pos[:, 0], ins_pos[:, 1], 'g-', alpha=0.6, label='Insert (Forward)' if i==0 else "")
+        # Place: Inverse (Red)
+        plt.plot(place_pos[:, 0], place_pos[:, 1], 'r--', alpha=0.6, label='Place (Inverse)' if i==0 else "")
         
-        # Plot Connection (The Gap)
-        # Connect Insert Start (0) to Remove End (-1)
-        plt.plot([ins_pos[0, 0], rem_pos[-1, 0]], 
-                 [ins_pos[0, 1], rem_pos[-1, 1]], 
-                 'k:', linewidth=1, label='Match Gap' if i==0 else "")
+        # Plot Connection (The "Handshake" Point)
+        # Connect Insert End (-1) to Place Start (0)
+        # These points should be very close if matching worked.
+        plt.plot([ins_pos[-1, 0], place_pos[0, 0]], 
+                 [ins_pos[-1, 1], place_pos[0, 1]], 
+                 'k-', linewidth=2, marker='x', markersize=8, label='Match Point' if i==0 else "")
         
-        # Mark Start of Insert (Home)
-        plt.scatter(ins_pos[0, 0], ins_pos[0, 1], c='k', marker='o', s=20)
+        # Mark Start of Insert (Origin/Table)
+        plt.scatter(ins_pos[0, 0], ins_pos[0, 1], c='black', marker='o', s=30, zorder=5)
 
-    plt.title(f"Top {num_plot} Matches (X-Y Plane)")
-    plt.xlabel("X")
-    plt.ylabel("Y")
+    plt.title(f"Top {num_plot} Matches (X-Y Plane)\nGoal: Green End touches Red Start")
+    plt.xlabel("X (Relative)")
+    plt.ylabel("Y (Relative)")
     plt.legend()
-    plt.grid(True)
+    plt.grid(True, alpha=0.3)
     
     # Plot Z Plane (Height)
     plt.subplot(1, 2, 2)
-    time = np.linspace(0, 1, 1000)
-    for i in range(num_plot):
+    time_steps = np.linspace(0, 1, 1000)
+    for i in range(min(num_plot, len(inserts))):
         ins_z = inserts[i]['pose'][0][:, 2]
-        rem_z = removes[i]['pose'][0][:, 2]
+        place_z = places[i]['pose'][0][:, 2]
         
-        plt.plot(time, ins_z, 'g-', alpha=0.5)
-        plt.plot(time, rem_z, 'r--', alpha=0.5)
+        # Insert
+        plt.plot(time_steps, ins_z, 'g-', alpha=0.5)
+        # Place
+        plt.plot(time_steps, place_z, 'r--', alpha=0.5)
         
-    plt.title("Z-Height Profile")
-    plt.xlabel("Time")
+        # Connection check in Z
+        plt.plot([1.0, 0.0], [ins_z[-1], place_z[0]], 'k:', alpha=0.3)
+        
+    plt.title("Z-Height Profile\n(Note: Z might differ at connection point)")
+    plt.xlabel("Time (Normalized)")
     plt.ylabel("Z Height")
-    plt.grid(True)
+    plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(os.path.join(OUTPUT_DIR, 'match_verification.png'))
-    print("Verification plot saved.")
+    save_img = os.path.join(OUTPUT_DIR, 'match_verification.png')
+    plt.savefig(save_img)
+    print(f"Verification plot saved to {save_img}")
 
 if __name__ == "__main__":
     match_trajectories()

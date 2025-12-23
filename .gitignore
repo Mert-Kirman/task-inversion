@@ -8,4 +8,5 @@ logs/
 data/plots/
 data/plots_relative_full/
 data/paired_trajectories/
+data/paired_trajectories_insert_place/
 wandb/
