@@ -76,29 +76,40 @@ def match_trajectories():
     # 3. Solve Assignment Problem (Hungarian Algorithm)
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
     
-    print(f"\nMatched {len(row_ind)} pairs.")
+    # 4. Sort Matches by Distance
+    # Collect matches into a list of tuples: (insert_idx, place_idx, distance)
+    matches = []
+    for r, c in zip(row_ind, col_ind):
+        dist = cost_matrix[r, c]
+        matches.append((r, c, dist))
+        
+    # Sort by distance (smallest error first)
+    matches.sort(key=lambda x: x[2])
     
-    # 4. Construct Paired Lists
+    print(f"\nMatched {len(matches)} pairs. Sorted by distance (Best first).")
+    
+    # 5. Construct Sorted Paired Lists
     matched_inserts = []
     matched_places = []
     matched_info = [] 
     
-    for r, c in zip(row_ind, col_ind):
-        # r is index in Insert list
-        # c is index in Place list
-        
+    for r, c, dist in matches:
         matched_inserts.append(ins_data[r])
         matched_places.append(place_data[c])
         
-        # Calculate distance for logging
-        dist = cost_matrix[r, c]
         matched_info.append({
             'insert_name': ins_names[r],
             'place_name': place_names[c],
             'match_distance': dist
         })
         
-    # 5. Save Stacked Data
+    # Print top 10 best matches
+    print("\nTop 20 Best Matches:")
+    for i in range(min(20, len(matched_info))):
+        info = matched_info[i]
+        print(f"  {i+1}. {info['insert_name']} <--> {info['place_name']} (Dist: {info['match_distance']:.4f})")
+
+    # 6. Save Stacked Data
     save_path_ins = os.path.join(OUTPUT_DIR, 'insert_all.npy')
     save_path_place = os.path.join(OUTPUT_DIR, 'place_all.npy')
     save_path_meta = os.path.join(OUTPUT_DIR, 'pairing_info.npy')
@@ -107,11 +118,11 @@ def match_trajectories():
     np.save(save_path_place, np.array(matched_places))
     np.save(save_path_meta, matched_info)
     
-    print(f"\nSaved matched data to {OUTPUT_DIR}")
+    print(f"\nSaved sorted matched data to {OUTPUT_DIR}")
     print(f"  - {save_path_ins} ({len(matched_inserts)} trajectories)")
     print(f"  - {save_path_place} ({len(matched_places)} trajectories)")
     
-    # 6. Verification Plot
+    # 7. Verification Plot
     plot_verification(matched_inserts, matched_places, 10)
 
 def plot_verification(inserts, places, num_plot=5):
@@ -145,7 +156,7 @@ def plot_verification(inserts, places, num_plot=5):
         # Mark Start of Insert (Origin/Table)
         plt.scatter(ins_pos[0, 0], ins_pos[0, 1], c='black', marker='o', s=30, zorder=5)
 
-    plt.title(f"Top {num_plot} Matches (X-Y Plane)\nGoal: Green End touches Red Start")
+    plt.title(f"Top {num_plot} Best Matches (X-Y Plane)\nSorted by Gap Distance (Smallest Gap First)")
     plt.xlabel("X (Relative)")
     plt.ylabel("Y (Relative)")
     plt.legend()
@@ -172,7 +183,7 @@ def plot_verification(inserts, places, num_plot=5):
     plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    save_img = os.path.join(OUTPUT_DIR, 'match_verification.png')
+    save_img = os.path.join(OUTPUT_DIR, f'match_verification_sorted_top_{min(num_plot, len(inserts))}.png')
     plt.savefig(save_img)
     print(f"Verification plot saved to {save_img}")
 
