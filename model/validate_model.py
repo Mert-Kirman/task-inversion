@@ -76,7 +76,7 @@ def val_only_extra(model, validation_indices, epoch_count, demo_data, d_x, d_y1,
                                                                    f_condition_points, d_x, d_y1, d_y2)
         
         if epoch_count % plot_freq == 0 and validation_idx == validation_indices[plot_id]:
-            error += utils.validate_model(ff_means, ff_stds, validation_idx, demo_data, time_len, f_condition_points, epoch_count, d_y1, d_y2, forward=True, plot=True)
+            error += utils.validate_model(ff_means, ff_stds, validation_idx, demo_data, time_len, f_condition_points, epoch_count, d_y1, d_y2, forward=True, plot=False)
         else:
             error += utils.validate_model(ff_means, ff_stds, validation_idx, demo_data, time_len, f_condition_points, epoch_count, d_y1, d_y2,forward=True, plot=False)
 

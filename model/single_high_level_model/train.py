@@ -82,13 +82,12 @@ if __name__ == "__main__":
 
     # Load trajectory(sensorimotor) data
     high_level_action_dict_interpolated = np.load('data/processed_high_level_actions/synchronized_high_level_action_31_robot_state.npy', allow_pickle=True).item()
-    timestamps_dict_interpolated = np.load('data/processed_high_level_actions/synchronized_high_level_action_31_timestamps.npy', allow_pickle=True)
     
     robot_state_sensor_names = ['compensated_base_force', 'compensated_base_torque', 'gripper_positions', 'joint_efforts', 'joint_positions', 'joint_velocities', 'measured_force', 'measured_torque', 'pose', 'velocity']
     modality_files_interpolated = {}
     for sensor in robot_state_sensor_names:
-        sensor_values = high_level_action_dict_interpolated[sensor]
-        timestamps = timestamps_dict_interpolated
+        sensor_values = high_level_action_dict_interpolated[sensor][0]
+        timestamps = high_level_action_dict_interpolated[sensor][1]
         modality_files_interpolated[sensor] = (sensor_values, timestamps)
 
     selected_sensors = ['joint_positions', 'pose', 'gripper_positions', 'compensated_base_force']

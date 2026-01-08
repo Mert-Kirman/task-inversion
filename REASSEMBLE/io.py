@@ -313,7 +313,7 @@ def load_segment_info(h5_dir):
 
 if __name__ == "__main__":
     # Example usage
-    h5_file_path = 'D:\\cmpe491-dataset\\REASSEMBLE\\data\\2025-01-09-13-59-54.h5'
+    h5_file_path = 'data/original_reassemble_data/2025-01-09-13-59-54.h5'
     data = load_h5_file(h5_file_path, decode=False)
     
     segments_info = data.get('segments_info', None)

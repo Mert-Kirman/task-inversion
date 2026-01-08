@@ -84,33 +84,45 @@ def synchronize_multiple_modalities(modality_files, target_n_samples=100):
     synchronized_data = {}
     for modality_name, (values, timestamps) in modalities.items():
         print(f"Interpolating {modality_name}...")
-        synchronized_data[modality_name] = interpolate_sensor_data(
+        interpolated_sensor_data = interpolate_sensor_data(
             values, timestamps, common_timestamps, kind='linear'
         )
+        synchronized_data[modality_name] = (interpolated_sensor_data, common_timestamps)
     
-    return synchronized_data, common_timestamps
+    return synchronized_data
 
 
 if __name__ == '__main__':
-    high_level_action_dict = np.load('data/raw_high_level_actions/2025-01-09-13-59-54_high_level_action_31_robot_state.npy', allow_pickle=True).item()
-    timestamps_dict = np.load('data/raw_high_level_actions/2025-01-09-13-59-54_high_level_action_31_timestamps.npy', allow_pickle=True).item()
+    robot_state_sensor_names = ['compensated_base_force', 'compensated_base_torque', 'gripper_positions', 'joint_efforts', 
+                                'joint_positions', 'joint_velocities', 'measured_force', 'measured_torque', 'pose', 'velocity']
     
-    robot_state_sensor_names = ['compensated_base_force', 'compensated_base_torque', 'gripper_positions', 'joint_efforts', 'joint_positions', 'joint_velocities', 'measured_force', 'measured_torque', 'pose', 'velocity']
-    
-    modality_files = {}
-    for sensor in robot_state_sensor_names:
-        sensor_values = high_level_action_dict[sensor]
-        timestamps = timestamps_dict[sensor]
-        modality_files[sensor] = (sensor_values, timestamps)
-        
-    synchronized_data, common_timestamps = synchronize_multiple_modalities(modality_files, target_n_samples=1000)
+    # Get a list of available npy files
+    raw_folder_path = 'data/raw_high_level_actions'
+    available_actions = [d for d in os.listdir(raw_folder_path) if os.path.isdir(f'{raw_folder_path}/{d}')]
+    for action in available_actions:
+        action_path = f'{raw_folder_path}/{action}'
+        objects = [o for o in os.listdir(action_path) if os.path.isdir(f'{action_path}/{o}')]
+        for obj in objects:
+            object_path = f'{action_path}/{obj}'
+            available_files = [f for f in os.listdir(object_path) if f.endswith('.npy')]
+            for file_name in available_files:
+                file_path = f'{object_path}/{file_name}'
+                print(f"\nProcessing {file_path}...")
+                high_level_action_dict = np.load(file_path, allow_pickle=True).item()
+                
+                modality_files = {}
+                for sensor in robot_state_sensor_names:
+                    sensor_values = high_level_action_dict[sensor][0]
+                    timestamps = high_level_action_dict[sensor][1]
+                    modality_files[sensor] = (sensor_values, timestamps)
+                    
+                synchronized_data = synchronize_multiple_modalities(modality_files, target_n_samples=1000)
 
-    print("Synchronized Data Shapes:")
-    for sensor in robot_state_sensor_names:
-        print(f"{sensor}: {synchronized_data[sensor].shape}")
-    
-    processed_data_dir = 'data/processed_high_level_actions'
-    print(f"\nSaving synchronized data to {processed_data_dir}...")
-    os.makedirs(processed_data_dir, exist_ok=True)
-    np.save(os.path.join(processed_data_dir, 'synchronized_high_level_action_31_robot_state.npy'), synchronized_data)
-    np.save(os.path.join(processed_data_dir, 'synchronized_high_level_action_31_timestamps.npy'), common_timestamps)
+                print("Synchronized Data Shapes:")
+                for sensor in robot_state_sensor_names:
+                    print(f"{sensor}: {synchronized_data[sensor][0].shape}")
+                
+                processed_data_dir = f'data/processed_high_level_actions/{action}/{obj}'
+                print(f"\nSaving synchronized data to {processed_data_dir}...")
+                os.makedirs(processed_data_dir, exist_ok=True)
+                np.save(os.path.join(processed_data_dir, f'{file_name}'), synchronized_data)
