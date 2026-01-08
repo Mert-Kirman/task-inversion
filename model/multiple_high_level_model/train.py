@@ -105,7 +105,7 @@ if __name__ == "__main__":
     Y2_list = [d['pose'][0][:, :3] for d in place_data]  # Inverse (Place)
 
     # Train with top x matched trajectories only
-    top_x_matched = min(10, len(Y1_list))
+    top_x_matched = min(200, len(Y1_list))
     Y1_list = Y1_list[:top_x_matched]
     Y2_list = Y2_list[:top_x_matched]
     print(f"Using top {top_x_matched} matched trajectories for training.")

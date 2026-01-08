@@ -14,7 +14,7 @@ import model.multiple_high_level_model.dual_enc_dec_model as dual_enc_dec_cnmp
 import model.model_predict as model_predict
 
 # ================= CONFIGURATION =================
-run_id = "run_1767830308.749522"
+run_id = "run_1767833550.541406"
 save_path = f"model/multiple_high_level_model/save/{run_id}"
 
 # POINT TO THE PAIRED DATA FOLDER
@@ -85,7 +85,7 @@ def load_matched_data():
     Y2_list = [d['pose'][0][:, :3] for d in place_data]
 
     # We trained with top matched only
-    top_x_matched = min(10, len(Y1_list))
+    top_x_matched = min(200, len(Y1_list))
     Y1_list = Y1_list[:top_x_matched]
     Y2_list = Y2_list[:top_x_matched]
     print(f"Using top {top_x_matched} matched trajectories for evaluation.")

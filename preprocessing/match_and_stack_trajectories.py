@@ -105,7 +105,7 @@ def match_trajectories():
         
     # Print top 10 best matches
     print("\nTop 20 Best Matches:")
-    for i in range(min(20, len(matched_info))):
+    for i in range(min(100, len(matched_info))):
         info = matched_info[i]
         print(f"  {i+1}. {info['insert_name']} <--> {info['place_name']} (Dist: {info['match_distance']:.4f})")
 
