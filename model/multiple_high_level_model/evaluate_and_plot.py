@@ -14,7 +14,7 @@ import model.multiple_high_level_model.dual_enc_dec_model as dual_enc_dec_cnmp
 import model.model_predict as model_predict
 
 # ================= CONFIGURATION =================
-run_id = "run_1766501551.670611"
+run_id = "run_1767830308.749522"
 save_path = f"model/multiple_high_level_model/save/{run_id}"
 
 # POINT TO THE PAIRED DATA FOLDER
@@ -83,6 +83,12 @@ def load_matched_data():
     # We take the first 3 dims (x, y, z)
     Y1_list = [d['pose'][0][:, :3] for d in insert_data] 
     Y2_list = [d['pose'][0][:, :3] for d in place_data]
+
+    # We trained with top matched only
+    top_x_matched = min(10, len(Y1_list))
+    Y1_list = Y1_list[:top_x_matched]
+    Y2_list = Y2_list[:top_x_matched]
+    print(f"Using top {top_x_matched} matched trajectories for evaluation.")
 
     Y1_raw = torch.tensor(np.stack(Y1_list), dtype=torch.float32)
     Y2_raw = torch.tensor(np.stack(Y2_list), dtype=torch.float32)

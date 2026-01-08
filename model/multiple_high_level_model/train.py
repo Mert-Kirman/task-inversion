@@ -104,6 +104,12 @@ if __name__ == "__main__":
     Y1_list = [d['pose'][0][:, :3] for d in insert_data] # Forward (Insert)
     Y2_list = [d['pose'][0][:, :3] for d in place_data]  # Inverse (Place)
 
+    # Train with top x matched trajectories only
+    top_x_matched = min(10, len(Y1_list))
+    Y1_list = Y1_list[:top_x_matched]
+    Y2_list = Y2_list[:top_x_matched]
+    print(f"Using top {top_x_matched} matched trajectories for training.")
+
     # Stack into tensors: (Batch, Time, Dims)
     Y1 = torch.tensor(np.stack(Y1_list), dtype=torch.float32)
     Y2 = torch.tensor(np.stack(Y2_list), dtype=torch.float32)
@@ -178,6 +184,7 @@ if __name__ == "__main__":
     all_indices = set(range(num_demo))
     # Using every 4th trajectory for validation
     validation_indices = [i for i in range(0, num_demo, 4)]
+    print(f"Validation Indices: {validation_indices}")
     training_indices = list(all_indices - set(validation_indices))
 
     demo_data = [X1, X2, Y1, Y2, C]
