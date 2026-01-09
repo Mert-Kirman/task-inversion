@@ -6,11 +6,19 @@ import matplotlib.pyplot as plt
 
 # ================= CONFIGURATION =================
 BASE_DIR = 'data/processed_relative_high_level_actions'
-OBJ_NAME = 'round_peg_4'
+obj_names = ['round_peg_4', 'square_peg_4']
+# OBJ_NAME = 'round_peg_4'
 
 # Paths to separate directories
-INSERT_DIR = os.path.join(BASE_DIR, 'insert', OBJ_NAME)
-PLACE_DIR = os.path.join(BASE_DIR, 'place', OBJ_NAME)
+insert_dirs = []
+place_dirs = []
+for OBJ_NAME in obj_names:
+     INSERT_DIR = os.path.join(BASE_DIR, 'insert', OBJ_NAME)
+     PLACE_DIR = os.path.join(BASE_DIR, 'place', OBJ_NAME)
+     insert_dirs.append(INSERT_DIR)
+     place_dirs.append(PLACE_DIR)
+# INSERT_DIR = os.path.join(BASE_DIR, 'insert', OBJ_NAME)
+# PLACE_DIR = os.path.join(BASE_DIR, 'place', OBJ_NAME)
 
 # Output Paths
 OUTPUT_DIR = 'data/paired_trajectories_insert_place'
@@ -55,77 +63,81 @@ def load_endpoints(directory):
     return filenames, np.array(start_points), np.array(end_points), full_data
 
 def match_trajectories():
-    # 1. Load Data
-    print("--- Loading Insert Data ---")
-    ins_names, ins_starts, ins_ends, ins_data = load_endpoints(INSERT_DIR)
-    
-    print("\n--- Loading Place Data ---")
-    place_names, place_starts, place_ends, place_data = load_endpoints(PLACE_DIR)
-    
-    # 2. Compute Cost Matrix
-    # LOGIC UPDATE: Match Insert END with Place START
-    # We only use X and Y dimensions (indices :2) for matching to be robust against Z-height differences
-    print("\n--- Computing Cost Matrix (Using X, Y dimensions only) ---")
-    
-    # insert_ends[:, :2] -> All End X,Y of inserts
-    # place_starts[:, :2] -> All Start X,Y of places
-    cost_matrix = cdist(ins_ends[:, :2], place_starts[:, :2], metric='euclidean')
-    
-    print(f"Cost Matrix Shape: {cost_matrix.shape}")
-    
-    # 3. Solve Assignment Problem (Hungarian Algorithm)
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-    
-    # 4. Sort Matches by Distance
-    # Collect matches into a list of tuples: (insert_idx, place_idx, distance)
-    matches = []
-    for r, c in zip(row_ind, col_ind):
-        dist = cost_matrix[r, c]
-        matches.append((r, c, dist))
+    for INSERT_DIR, PLACE_DIR in zip(insert_dirs, place_dirs):
+        print(f"\nProcessing Object: {os.path.basename(INSERT_DIR)}")
         
-    # Sort by distance (smallest error first)
-    matches.sort(key=lambda x: x[2])
-    
-    print(f"\nMatched {len(matches)} pairs. Sorted by distance (Best first).")
-    
-    # 5. Construct Sorted Paired Lists
-    matched_inserts = []
-    matched_places = []
-    matched_info = [] 
-    
-    for r, c, dist in matches:
-        matched_inserts.append(ins_data[r])
-        matched_places.append(place_data[c])
+        # 1. Load Data
+        print("--- Loading Insert Data ---")
+        ins_names, ins_starts, ins_ends, ins_data = load_endpoints(INSERT_DIR)
         
-        matched_info.append({
-            'insert_name': ins_names[r],
-            'place_name': place_names[c],
-            'match_distance': dist
-        })
+        print("\n--- Loading Place Data ---")
+        place_names, place_starts, place_ends, place_data = load_endpoints(PLACE_DIR)
         
-    # Print top 10 best matches
-    print("\nTop 20 Best Matches:")
-    for i in range(min(100, len(matched_info))):
-        info = matched_info[i]
-        print(f"  {i+1}. {info['insert_name']} <--> {info['place_name']} (Dist: {info['match_distance']:.4f})")
+        # 2. Compute Cost Matrix
+        # LOGIC UPDATE: Match Insert END with Place START
+        # We only use X and Y dimensions (indices :2) for matching to be robust against Z-height differences
+        print("\n--- Computing Cost Matrix (Using X, Y dimensions only) ---")
+        
+        # insert_ends[:, :2] -> All End X,Y of inserts
+        # place_starts[:, :2] -> All Start X,Y of places
+        cost_matrix = cdist(ins_ends[:, :2], place_starts[:, :2], metric='euclidean')
+        
+        print(f"Cost Matrix Shape: {cost_matrix.shape}")
+        
+        # 3. Solve Assignment Problem (Hungarian Algorithm)
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        
+        # 4. Sort Matches by Distance
+        # Collect matches into a list of tuples: (insert_idx, place_idx, distance)
+        matches = []
+        for r, c in zip(row_ind, col_ind):
+            dist = cost_matrix[r, c]
+            matches.append((r, c, dist))
+            
+        # Sort by distance (smallest error first)
+        matches.sort(key=lambda x: x[2])
+        
+        print(f"\nMatched {len(matches)} pairs. Sorted by distance (Best first).")
+        
+        # 5. Construct Sorted Paired Lists
+        matched_inserts = []
+        matched_places = []
+        matched_info = [] 
+        
+        for r, c, dist in matches:
+            matched_inserts.append(ins_data[r])
+            matched_places.append(place_data[c])
+            
+            matched_info.append({
+                'insert_name': ins_names[r],
+                'place_name': place_names[c],
+                'match_distance': dist
+            })
+            
+        print("\nTop 20 Best Matches:")
+        for i in range(min(100, len(matched_info))):
+            info = matched_info[i]
+            print(f"  {i+1}. {info['insert_name']} <--> {info['place_name']} (Dist: {info['match_distance']:.4f})")
 
-    # 6. Save Stacked Data
-    save_path_ins = os.path.join(OUTPUT_DIR, 'insert_all.npy')
-    save_path_place = os.path.join(OUTPUT_DIR, 'place_all.npy')
-    save_path_meta = os.path.join(OUTPUT_DIR, 'pairing_info.npy')
-    
-    np.save(save_path_ins, np.array(matched_inserts))
-    np.save(save_path_place, np.array(matched_places))
-    np.save(save_path_meta, matched_info)
-    
-    print(f"\nSaved sorted matched data to {OUTPUT_DIR}")
-    print(f"  - {save_path_ins} ({len(matched_inserts)} trajectories)")
-    print(f"  - {save_path_place} ({len(matched_places)} trajectories)")
-    
-    # 7. Verification Plot
-    plot_verification(matched_inserts, matched_places, 10)
+        # 6. Save Stacked Data
+        base_save_dir = os.path.join(OUTPUT_DIR, os.path.basename(INSERT_DIR))
+        os.makedirs(base_save_dir, exist_ok=True)
+        save_path_ins = os.path.join(base_save_dir, 'insert_all.npy')
+        save_path_place = os.path.join(base_save_dir, 'place_all.npy')
+        save_path_meta = os.path.join(base_save_dir, 'pairing_info.npy')
+        
+        np.save(save_path_ins, np.array(matched_inserts))
+        np.save(save_path_place, np.array(matched_places))
+        np.save(save_path_meta, matched_info)
+        
+        print(f"\nSaved sorted matched data to {base_save_dir}")
+        print(f"  - {save_path_ins} ({len(matched_inserts)} trajectories)")
+        print(f"  - {save_path_place} ({len(matched_places)} trajectories)")
+        
+        # 7. Verification Plot
+        plot_verification(matched_inserts, matched_places, base_save_dir, 10)
 
-def plot_verification(inserts, places, num_plot=5):
+def plot_verification(inserts, places, save_dir, num_plot=5):
     """
     Plots the Insert (Green) and Place (Red) trajectories.
     Logic Check: The END of Green should touch the START of Red.
@@ -183,7 +195,7 @@ def plot_verification(inserts, places, num_plot=5):
     plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    save_img = os.path.join(OUTPUT_DIR, f'match_verification_sorted_top_{min(num_plot, len(inserts))}.png')
+    save_img = os.path.join(save_dir, f'match_verification_sorted_top_{min(num_plot, len(inserts))}.png')
     plt.savefig(save_img)
     print(f"Verification plot saved to {save_img}")
 
