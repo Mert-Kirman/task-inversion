@@ -100,11 +100,15 @@ def match_trajectories():
         print(f"\nMatched {len(matches)} pairs. Sorted by distance (Best first).")
         
         # 5. Construct Sorted Paired Lists
+        distance_threshold = 0.24
         matched_inserts = []
         matched_places = []
         matched_info = [] 
         
         for r, c, dist in matches:
+            if dist > distance_threshold:
+                print(f"  Skipping pair {ins_names[r]} <--> {place_names[c]} due to high distance: {dist:.4f}")
+                continue
             matched_inserts.append(ins_data[r])
             matched_places.append(place_data[c])
             
@@ -114,7 +118,7 @@ def match_trajectories():
                 'match_distance': dist
             })
             
-        print("\nTop 20 Best Matches:")
+        print("\nBest Matches:")
         for i in range(min(100, len(matched_info))):
             info = matched_info[i]
             print(f"  {i+1}. {info['insert_name']} <--> {info['place_name']} (Dist: {info['match_distance']:.4f})")
@@ -135,7 +139,7 @@ def match_trajectories():
         print(f"  - {save_path_place} ({len(matched_places)} trajectories)")
         
         # 7. Verification Plot
-        plot_verification(matched_inserts, matched_places, base_save_dir, 10)
+        plot_verification(matched_inserts, matched_places, base_save_dir, 100)
 
 def plot_verification(inserts, places, save_dir, num_plot=5):
     """
