@@ -57,13 +57,13 @@ if __name__ == "__main__":
                         
                         # Plot multiple interpolated values for the same dimension
                         plt.plot(timestamps_interpolated, sensor_values_interpolated_dim, label=f'{file_name}')
-                        plot_count += 1
-                        if plot_count == 3:
-                            break  # Limit to first 3 plots for clarity
+                        # plot_count += 1
+                        # if plot_count == 3:
+                        #     break  # Limit to first 3 plots for clarity
                     plt.title(f'Interpolated {modality_name} Sensor Data')
                     plt.xlabel('Time')
                     plt.ylabel('Sensor Values')
-                    plt.legend()
+                    # plt.legend()
                     plt.grid()
                 plt.tight_layout()
                 plt.savefig(os.path.join(data_plots_dir, f'interpolated_{sensor}_all_dims_without_dtw.png'))
