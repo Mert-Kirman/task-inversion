@@ -10,20 +10,23 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-import model.multiple_high_level_model.dual_enc_dec_model as dual_enc_dec_cnmp
+import model.insert_place_square_round_peg.dual_enc_dec_model as dual_enc_dec_cnmp
 import model.model_predict as model_predict
 
 # ================= CONFIGURATION =================
-run_id = "run_1767833550.541406"
-save_path = f"model/multiple_high_level_model/save/{run_id}"
+run_id = "run_1767992349.943897"
+save_path = f"model/insert_place_square_round_peg/save/{run_id}"
 
 # POINT TO THE PAIRED DATA FOLDER
 data_path = "data/paired_trajectories_insert_place" 
 
-model_name = "perfectly_paired.pth"
+model_name = "best_model.pth"
 
-# Dimensions used in training
-SELECTED_SENSORS = ['pose'] 
+# Object Configuration (Must match train.py)
+object_config = {
+    'round_peg_4':  {'id': 0.0},
+    'square_peg_4': {'id': 1.0} 
+}
 # =================================================
 
 def load_normalization_stats():
@@ -36,7 +39,6 @@ def load_normalization_stats():
     stats = np.load(stats_path, allow_pickle=True).item()
     
     # Extract Y stats
-    # Check if they are lists or tensors (depends on how train.py saved them)
     if isinstance(stats['Y_min'], list):
         y_min = torch.stack(stats['Y_min'])
         y_max = torch.stack(stats['Y_max'])
@@ -63,46 +65,73 @@ def denormalize_data(tensor, min_val, max_val):
 
 def load_matched_data():
     """
-    Loads matched insert/place data and reconstructs the Averaged Context.
-    Returns RAW (un-normalized) tensors.
+    Loads matched insert/place data for ALL configured objects.
+    Reconstructs the Context [Avg_X, Avg_Y, Object_ID].
+    Returns RAW (un-normalized) tensors and a list of object names for plotting.
     """
     print(f"Loading paired data from {data_path}...")
     
-    insert_file = os.path.join(data_path, 'insert_all.npy')
-    place_file = os.path.join(data_path, 'place_all.npy')
-    
-    if not os.path.exists(insert_file) or not os.path.exists(place_file):
-        print(f"Error: Data files not found in {data_path}")
-        sys.exit(1)
+    all_Y1 = []
+    all_Y2 = []
+    all_C = []
+    all_obj_names = [] # To track which trajectory belongs to which object
 
-    # Load arrays of dicts
-    insert_data = np.load(insert_file, allow_pickle=True)
-    place_data = np.load(place_file, allow_pickle=True)
+    for obj_name, config in object_config.items():
+        obj_id = config['id']
+        obj_dir = os.path.join(data_path, obj_name)
+        
+        insert_file = os.path.join(obj_dir, 'insert_all.npy')
+        place_file = os.path.join(obj_dir, 'place_all.npy')
+        
+        if not os.path.exists(insert_file) or not os.path.exists(place_file):
+            print(f"Warning: Data files not found for {obj_name} in {obj_dir}. Skipping.")
+            continue
 
-    # Extract Trajectories (Batch, Time, Dim)
-    # We take the first 3 dims (x, y, z)
-    Y1_list = [d['pose'][0][:, :3] for d in insert_data] 
-    Y2_list = [d['pose'][0][:, :3] for d in place_data]
+        # Load arrays of dicts
+        insert_data = np.load(insert_file, allow_pickle=True)
+        place_data = np.load(place_file, allow_pickle=True)
 
-    # We trained with top matched only
-    top_x_matched = min(200, len(Y1_list))
-    Y1_list = Y1_list[:top_x_matched]
-    Y2_list = Y2_list[:top_x_matched]
-    print(f"Using top {top_x_matched} matched trajectories for evaluation.")
+        # Extract Trajectories (Batch, Time, Dim)
+        curr_Y1 = [d['pose'][0][:, :3] for d in insert_data] 
+        curr_Y2 = [d['pose'][0][:, :3] for d in place_data]
 
-    Y1_raw = torch.tensor(np.stack(Y1_list), dtype=torch.float32)
-    Y2_raw = torch.tensor(np.stack(Y2_list), dtype=torch.float32)
-    
-    # --- CONTEXT RECONSTRUCTION (AVERAGED) ---
-    # C = (Insert_End_XY + Place_Start_XY) / 2
-    
-    insert_ends_xy = Y1_raw[:, -1, :2]
-    place_starts_xy = Y2_raw[:, 0, :2]
-    
-    C_raw = (insert_ends_xy + place_starts_xy) / 2.0
-    
-    print(f"Data loaded. Found {Y1_raw.shape[0]} matched pairs.")
-    return Y1_raw, Y2_raw, C_raw
+        # Limit for evaluation (e.g. top 50 per object)
+        top_x = min(50, len(curr_Y1))
+        curr_Y1 = curr_Y1[:top_x]
+        curr_Y2 = curr_Y2[:top_x]
+        
+        if len(curr_Y1) == 0: continue
+
+        # Stack
+        Y1_np = np.stack(curr_Y1)
+        Y2_np = np.stack(curr_Y2)
+        
+        # --- CONTEXT RECONSTRUCTION ---
+        # 1. Geometric: (Insert_End_XY + Place_Start_XY) / 2
+        insert_ends_xy = Y1_np[:, -1, :2]
+        place_starts_xy = Y2_np[:, 0, :2]
+        geom_context = (insert_ends_xy + place_starts_xy) / 2.0
+        
+        # 2. ID Context: Repeated scalar
+        id_context = np.full((len(Y1_np), 1), obj_id)
+        
+        # 3. Combine
+        C_np = np.concatenate([geom_context, id_context], axis=1)
+
+        all_Y1.append(Y1_np)
+        all_Y2.append(Y2_np)
+        all_C.append(C_np)
+        all_obj_names.extend([obj_name] * len(Y1_np))
+        
+        print(f"  Loaded {len(Y1_np)} pairs for {obj_name}")
+
+    # Aggregate
+    Y1_raw = torch.tensor(np.concatenate(all_Y1, axis=0), dtype=torch.float32)
+    Y2_raw = torch.tensor(np.concatenate(all_Y2, axis=0), dtype=torch.float32)
+    C_raw = torch.tensor(np.concatenate(all_C, axis=0), dtype=torch.float32)
+
+    print(f"Total loaded: {Y1_raw.shape[0]} pairs.")
+    return Y1_raw, Y2_raw, C_raw, all_obj_names
 
 def plot_training_progress():
     """Plots loss and error curves if they exist."""
@@ -144,18 +173,17 @@ def plot_training_progress():
     except FileNotFoundError:
         print("Training logs not found, skipping progress plot.")
 
-def evaluate_random_trajectories(num_samples=3):
+def evaluate_random_trajectories(num_samples=6):
     # 1. Load Norm Stats
     y_min, y_max, c_min, c_max = load_normalization_stats()
     
     # 2. Load Raw Matched Data
-    # Y1 = Insert (Forward), Y2 = Place (Inverse)
-    Y1_raw, Y2_raw, C_raw = load_matched_data()
+    Y1_raw, Y2_raw, C_raw, obj_names = load_matched_data()
     
     d_x = 1
     d_y1 = Y1_raw.shape[2] 
     d_y2 = Y2_raw.shape[2] 
-    d_param = C_raw.shape[1]
+    d_param = C_raw.shape[1] # Should be 3 (AvgX, AvgY, ID)
     time_len = Y1_raw.shape[1] 
     num_demos = Y1_raw.shape[0]
 
@@ -178,13 +206,13 @@ def evaluate_random_trajectories(num_samples=3):
     model.eval()
 
     # 4. Select Random Indices
-    num_to_plot = min(num_samples, num_demos)
     random.seed(42) 
+    num_to_plot = min(num_samples, num_demos)
     indices = random.sample(range(num_demos), num_to_plot)
     
     # 5. Define Condition Points
     time_steps = np.linspace(0, 1, time_len)
-    cond_step_indices = [300] 
+    cond_step_indices = [300] # Conditioning at t=0.3 (During Insert)
     
     # 6. Plot Setup
     fig, axes = plt.subplots(num_to_plot, d_y1, figsize=(15, 4 * num_to_plot))
@@ -193,6 +221,7 @@ def evaluate_random_trajectories(num_samples=3):
     print(f"Evaluating indices: {indices}")
 
     for row_idx, traj_idx in enumerate(indices):
+        curr_obj_name = obj_names[traj_idx]
         
         # --- A. Prepare Ground Truth ---
         curr_y_truth_raw = Y2_raw[traj_idx].numpy() # Place Action (Inverse)
@@ -202,11 +231,7 @@ def evaluate_random_trajectories(num_samples=3):
         condition_points = []
         for t_idx in cond_step_indices:
             t_val = time_steps[t_idx]
-            
-            # Get raw value from Y1 (Insert)
-            y_val_raw = Y1_raw[traj_idx, t_idx:t_idx+1] # Shape (1, d_y1)
-            
-            # Normalize
+            y_val_raw = Y1_raw[traj_idx, t_idx:t_idx+1]
             y_val_norm = normalize_data(y_val_raw, y_min, y_max)
             condition_points.append([t_val, y_val_norm])
         
@@ -234,7 +259,7 @@ def evaluate_random_trajectories(num_samples=3):
             
             # 2. Prediction
             ax.plot(time_steps, means_pred[:, col_idx].numpy(), 
-                    color='blue', linestyle='--', linewidth=2, label='Pred (Place)')
+                    color='blue', linestyle='--', linewidth=2, label='Pred')
             
             # 3. Uncertainty
             sigma = stds_pred[:, col_idx].numpy()
@@ -246,20 +271,21 @@ def evaluate_random_trajectories(num_samples=3):
             if row_idx == 0:
                 ax.set_title(dim_labels[col_idx], fontsize=14, fontweight='bold')
             if col_idx == 0:
-                ax.set_ylabel(f"Pair {traj_idx}", fontsize=10)
+                # Add Object Name to Y-Label for Clarity
+                ax.set_ylabel(f"{curr_obj_name}\nPair {traj_idx}", fontsize=9, fontweight='bold')
 
             ax.grid(True, alpha=0.3)
             if row_idx == 0 and col_idx == 0:
                 ax.legend(fontsize='small', loc='best')
 
-    plt.suptitle(f"Inverse Task (Place) Evaluation\nContext: Avg(Insert_End, Place_Start)", fontsize=16)
+    plt.suptitle(f"Inverse Task Prediction (Round Peg vs Square Peg)\nModel: {model_name} | ID Context Included", fontsize=16)
     plt.tight_layout()
     plt.subplots_adjust(top=0.92) 
     
-    save_file = f'{save_path}/eval_inverse_place.png'
+    save_file = f'{save_path}/eval_multi_object.png'
     plt.savefig(save_file)
     print(f"Evaluation plots saved to {save_file}")
 
 if __name__ == "__main__":
     plot_training_progress()
-    evaluate_random_trajectories(num_samples=56)
+    evaluate_random_trajectories(num_samples=10)
