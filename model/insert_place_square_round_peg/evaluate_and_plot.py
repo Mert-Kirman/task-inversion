@@ -282,10 +282,89 @@ def evaluate_random_trajectories(num_samples=6):
     plt.tight_layout()
     plt.subplots_adjust(top=0.92) 
     
-    save_file = f'{save_path}/eval_multi_object.png'
+    save_file = f'{save_path}/eval_multi_object_{num_to_plot}_forward_condition.png'
+    plt.savefig(save_file)
+    print(f"Evaluation plots saved to {save_file}")
+
+    # Condition from place action at t=0
+    cond_step_indices = [0] # Conditioning at t=0.3 (During Insert)
+    
+    fig, axes = plt.subplots(num_to_plot, d_y1, figsize=(15, 4 * num_to_plot))
+    if num_to_plot == 1: axes = np.expand_dims(axes, 0) 
+
+    print(f"Evaluating indices: {indices}")
+
+    for row_idx, traj_idx in enumerate(indices):
+        curr_obj_name = obj_names[traj_idx]
+        
+        # --- A. Prepare Ground Truth ---
+        curr_y_truth_raw = Y2_raw[traj_idx].numpy() # Place Action (Inverse)
+        
+        # --- B. Prepare Input (Conditioning on Insert action) ---
+        # The model is predicting Y2 (Place) given Y1 (Insert)
+        condition_points = []
+        for t_idx in cond_step_indices:
+            t_val = time_steps[t_idx]
+            y_val_raw = Y2_raw[traj_idx, t_idx:t_idx+1]
+            y_val_norm = normalize_data(y_val_raw, y_min, y_max)
+            condition_points.append([t_val, y_val_norm])
+        
+        curr_context = C_normalized[traj_idx]
+
+        # --- C. Run Inference (Inverse Mode) ---
+        with torch.no_grad():
+            means_norm, stds_norm = model_predict.predict_inverse_inverse(
+                model, time_len, curr_context, condition_points, d_x, d_y1, d_y2
+            )
+            
+        # --- D. Denormalize Output ---
+        means_pred = denormalize_data(means_norm, y_min, y_max)
+        stds_pred = stds_norm * (y_max - y_min)
+
+        # --- E. Plotting ---
+        dim_labels = ["X (Place)", "Y (Place)", "Z (Place)"]
+        
+        for col_idx in range(d_y1):
+            ax = axes[row_idx, col_idx]
+            
+            # 1. Ground Truth
+            ax.plot(time_steps, curr_y_truth_raw[:, col_idx], 
+                    color='black', linestyle='-', linewidth=2, alpha=0.5, label='GT (Place)')
+            
+            # 2. Prediction
+            ax.plot(time_steps, means_pred[:, col_idx].numpy(), 
+                    color='blue', linestyle='--', linewidth=2, label='Pred')
+            
+            # 3. Uncertainty
+            sigma = stds_pred[:, col_idx].numpy()
+            mean_curve = means_pred[:, col_idx].numpy()
+            ax.fill_between(time_steps, mean_curve - 2*sigma, mean_curve + 2*sigma, 
+                            color='blue', alpha=0.1, label='Uncertainty')
+            
+            # 4. Conditioning Point
+            cond_y_raw = Y2_raw[traj_idx, cond_step_indices[0], col_idx]
+            ax.scatter(time_steps[cond_step_indices[0]], cond_y_raw, 
+                       color='red', s=80, marker='o', label='Condition Point')
+
+            # Labels
+            if row_idx == 0:
+                ax.set_title(dim_labels[col_idx], fontsize=14, fontweight='bold')
+            if col_idx == 0:
+                # Add Object Name to Y-Label for Clarity
+                ax.set_ylabel(f"{curr_obj_name}\nPair {traj_idx}", fontsize=9, fontweight='bold')
+
+            ax.grid(True, alpha=0.3)
+            if row_idx == 0 and col_idx == 0:
+                ax.legend(fontsize='small', loc='best')
+
+    plt.suptitle(f"Inverse Task Prediction (Round Peg vs Square Peg)\nModel: {model_name} | ID Context Included", fontsize=16)
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.92) 
+    
+    save_file = f'{save_path}/eval_multi_object_{num_to_plot}_inverse_condition.png'
     plt.savefig(save_file)
     print(f"Evaluation plots saved to {save_file}")
 
 if __name__ == "__main__":
     plot_training_progress()
-    evaluate_random_trajectories(num_samples=10)
+    evaluate_random_trajectories(num_samples=100)
