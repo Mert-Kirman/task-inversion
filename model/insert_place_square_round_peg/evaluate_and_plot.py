@@ -173,6 +173,105 @@ def plot_training_progress():
     except FileNotFoundError:
         print("Training logs not found, skipping progress plot.")
 
+def calculate_success_rates():
+    """
+    Evaluates success based on Start (t=0) and End (t=1) point accuracy.
+    Threshold: 5% of the global data range (per dimension).
+    """
+    print("\n--- CALCULATING SUCCESS RATES ---")
+    
+    # 1. Load Data & Stats
+    y_min, y_max, c_min, c_max = load_normalization_stats()
+    Y1_raw, Y2_raw, C_raw, obj_names = load_matched_data()
+    
+    # 2. Determine Thresholds (5% of Range)
+    # Range for each dimension x, y, z
+    global_range = (y_max - y_min).numpy() 
+    thresholds = 0.10 * global_range
+    
+    print(f"Global Range (X, Y, Z): {global_range}")
+    print(f"Success Thresholds (5%): {thresholds}")
+    
+    # 3. Load Model
+    d_x = 1
+    d_y1 = Y1_raw.shape[2] 
+    d_y2 = Y2_raw.shape[2] 
+    d_param = C_raw.shape[1] 
+    time_len = Y1_raw.shape[1] 
+    
+    model = dual_enc_dec_cnmp.DualEncoderDecoder(d_x, d_y1, d_y2, d_param)
+    model_path = os.path.join(save_path, model_name)
+    
+    if not os.path.exists(model_path):
+        print(f"Model not found at {model_path}")
+        return
+
+    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+    model.eval()
+    
+    # Normalize Inputs for Inference
+    C_normalized = C_raw.clone()
+    if c_min is not None and c_max is not None:
+        C_normalized = normalize_data(C_raw, c_min, c_max)
+
+    # 4. Evaluate Each Trajectory
+    # Condition Point: t=0.3 of Insert (Forward)
+    t_steps = np.linspace(0, 1, time_len)
+    cond_idx = 0 # t=0 # Conditioning at start point for success evaluation
+    
+    results = {} # Store results per object type
+
+    for i in range(len(Y2_raw)):
+        obj = obj_names[i]
+        if obj not in results:
+            results[obj] = {'total': 0, 'success': 0}
+            
+        results[obj]['total'] += 1
+        
+        # Prepare Condition
+        y_cond_raw = Y2_raw[i, cond_idx:cond_idx+1]
+        y_cond_norm = normalize_data(y_cond_raw, y_min, y_max)
+        cond_pts = [[t_steps[cond_idx], y_cond_norm]]
+        
+        curr_context = C_normalized[i]
+        
+        # Inference
+        with torch.no_grad():
+             means_norm, _ = model_predict.predict_inverse_inverse(
+                model, time_len, curr_context, cond_pts, d_x, d_y1, d_y2
+            )
+        
+        # Denormalize Prediction
+        pred_traj = denormalize_data(means_norm, y_min, y_max).numpy()
+        gt_traj = Y2_raw[i].numpy() # Ground Truth Place Trajectory
+        
+        # --- SUCCESS CHECK ---
+        # 1. Start Point (t=0) Comparison
+        pred_start = pred_traj[0]
+        gt_start = gt_traj[0]
+        start_diff = np.abs(pred_start - gt_start)
+        start_ok = np.all(start_diff[:2] <= thresholds[:2]) # Check only X,Y for start
+        
+        # 2. End Point (t=1) Comparison
+        pred_end = pred_traj[-1]
+        gt_end = gt_traj[-1]
+        end_diff = np.abs(pred_end - gt_end)
+        end_ok = np.all(end_diff[:2] <= thresholds[:2]) # Check only X,Y for end
+        
+        # Final Success: Both Start AND End must be within threshold
+        if start_ok and end_ok:
+            results[obj]['success'] += 1
+            
+    # 5. Print Summary
+    print("\n--- RESULTS SUMMARY ---")
+    for obj, stats in results.items():
+        rate = (stats['success'] / stats['total']) * 100
+        print(f"Object: {obj}")
+        print(f"  Total Samples: {stats['total']}")
+        print(f"  Successful:    {stats['success']}")
+        print(f"  Success Rate:  {rate:.2f}%")
+        print("-" * 30)
+
 def evaluate_random_trajectories(num_samples=6):
     # 1. Load Norm Stats
     y_min, y_max, c_min, c_max = load_normalization_stats()
@@ -367,4 +466,5 @@ def evaluate_random_trajectories(num_samples=6):
 
 if __name__ == "__main__":
     plot_training_progress()
+    calculate_success_rates()
     evaluate_random_trajectories(num_samples=100)
