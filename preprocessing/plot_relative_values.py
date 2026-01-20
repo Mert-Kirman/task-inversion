@@ -147,7 +147,7 @@ if __name__ == "__main__":
                     plt.xlabel('Time')
                     plt.ylabel('Value')
                     plt.grid(True, alpha=0.3)
-                    if dim == 0: plt.legend(fontsize='x-small')
+                    # if dim == 0: plt.legend(fontsize='x-small')
                 
                 plt.suptitle(f"Relative Pose (Ref: {'Start' if action=='insert' else 'Table Contact'})\n({action} - {obj})", fontsize=16)
                 plt.tight_layout()
