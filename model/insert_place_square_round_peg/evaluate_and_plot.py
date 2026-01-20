@@ -24,8 +24,8 @@ model_name = "best_model.pth"
 
 # Object Configuration (Must match train.py)
 object_config = {
-    'round_peg_4':  {'id': 0.0},
-    'square_peg_4': {'id': 1.0} 
+    'round_peg_4':  {'id': 0.0, 'label': 'Round Peg 4 (Source)'},
+    'square_peg_4': {'id': 1.0, 'label': 'Square Peg 4 (Target)'} 
 }
 # =================================================
 
@@ -173,26 +173,29 @@ def plot_training_progress():
     except FileNotFoundError:
         print("Training logs not found, skipping progress plot.")
 
-def calculate_success_rates():
+def calculate_success_rates_and_plot():
     """
     Evaluates success based on Start (t=0) and End (t=1) point accuracy.
-    Threshold: 5% of the global data range (per dimension).
+    Threshold: 5% (Strict) and 10% (Relaxed) of the global data range (per dimension).
     """
-    print("\n--- CALCULATING SUCCESS RATES ---")
+    print("\n--- CALCULATING SUCCESS RATES & PLOTTING ---")
     
-    # 1. Load Data & Stats
+    # Load Data & Stats
     y_min, y_max, c_min, c_max = load_normalization_stats()
     Y1_raw, Y2_raw, C_raw, obj_names = load_matched_data()
     
-    # 2. Determine Thresholds (5% of Range)
-    # Range for each dimension x, y, z
-    global_range = (y_max - y_min).numpy() 
-    thresholds = 0.10 * global_range
+    # Determine Thresholds
+    global_range = (y_max - y_min).numpy()
+    
+    # Define scenarios: Label, Percentage, Threshold Vector
+    scenarios = [
+        {'label': '5% (Strict)', 'pct': 0.05, 'thresh': 0.05 * global_range},
+        {'label': '10% (Relaxed)', 'pct': 0.10, 'thresh': 0.10 * global_range}
+    ]
     
     print(f"Global Range (X, Y, Z): {global_range}")
-    print(f"Success Thresholds (5%): {thresholds}")
     
-    # 3. Load Model
+    # Load Model
     d_x = 1
     d_y1 = Y1_raw.shape[2] 
     d_y2 = Y2_raw.shape[2] 
@@ -209,25 +212,20 @@ def calculate_success_rates():
     model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     model.eval()
     
-    # Normalize Inputs for Inference
+    # Normalize Inputs
     C_normalized = C_raw.clone()
     if c_min is not None and c_max is not None:
         C_normalized = normalize_data(C_raw, c_min, c_max)
 
-    # 4. Evaluate Each Trajectory
-    # Condition Point: t=0.3 of Insert (Forward)
+    # Run Inference ONCE for all data
     t_steps = np.linspace(0, 1, time_len)
-    cond_idx = 0 # t=0 # Conditioning at start point for success evaluation
+    cond_idx = 0 # t=0
     
-    results = {} # Store results per object type
-
+    # Store predictions to avoid re-running model for each threshold
+    predictions = [] # List of (pred_traj, gt_traj, obj_name)
+    
+    print("Running Inference...")
     for i in range(len(Y2_raw)):
-        obj = obj_names[i]
-        if obj not in results:
-            results[obj] = {'total': 0, 'success': 0}
-            
-        results[obj]['total'] += 1
-        
         # Prepare Condition
         y_cond_raw = Y2_raw[i, cond_idx:cond_idx+1]
         y_cond_norm = normalize_data(y_cond_raw, y_min, y_max)
@@ -235,42 +233,100 @@ def calculate_success_rates():
         
         curr_context = C_normalized[i]
         
-        # Inference
         with torch.no_grad():
              means_norm, _ = model_predict.predict_inverse_inverse(
                 model, time_len, curr_context, cond_pts, d_x, d_y1, d_y2
             )
         
-        # Denormalize Prediction
         pred_traj = denormalize_data(means_norm, y_min, y_max).numpy()
-        gt_traj = Y2_raw[i].numpy() # Ground Truth Place Trajectory
+        gt_traj = Y2_raw[i].numpy()
         
-        # --- SUCCESS CHECK ---
-        # 1. Start Point (t=0) Comparison
-        pred_start = pred_traj[0]
-        gt_start = gt_traj[0]
-        start_diff = np.abs(pred_start - gt_start)
-        start_ok = np.all(start_diff[:2] <= thresholds[:2]) # Check only X,Y for start
+        predictions.append({
+            'pred': pred_traj,
+            'gt': gt_traj,
+            'obj': obj_names[i]
+        })
+
+    # Evaluate Success for Each Scenario
+    # Structure: results[scenario_label][obj_name] = success_rate
+    final_stats = {s['label']: {} for s in scenarios}
+    obj_counts = {}
+
+    for s in scenarios:
+        print(f"\nEvaluating Scenario: {s['label']}")
+        thresholds = s['thresh']
         
-        # 2. End Point (t=1) Comparison
-        pred_end = pred_traj[-1]
-        gt_end = gt_traj[-1]
-        end_diff = np.abs(pred_end - gt_end)
-        end_ok = np.all(end_diff[:2] <= thresholds[:2]) # Check only X,Y for end
+        # Temp counters
+        counts = {} 
         
-        # Final Success: Both Start AND End must be within threshold
-        if start_ok and end_ok:
-            results[obj]['success'] += 1
+        for p in predictions:
+            obj = p['obj']
+            if obj not in counts: counts[obj] = {'total': 0, 'success': 0}
+            if obj not in obj_counts: obj_counts[obj] = 0 # Track total counts once
             
-    # 5. Print Summary
-    print("\n--- RESULTS SUMMARY ---")
-    for obj, stats in results.items():
-        rate = (stats['success'] / stats['total']) * 100
-        print(f"Object: {obj}")
-        print(f"  Total Samples: {stats['total']}")
-        print(f"  Successful:    {stats['success']}")
-        print(f"  Success Rate:  {rate:.2f}%")
-        print("-" * 30)
+            counts[obj]['total'] += 1
+            if s == scenarios[0]: obj_counts[obj] += 1
+            
+            # Check Start (t=0) and End (t=1) - X(0) and Y(1) ONLY
+            pred_start = p['pred'][0]
+            gt_start = p['gt'][0]
+            start_ok = np.all(np.abs(pred_start - gt_start)[:2] <= thresholds[:2])
+            
+            pred_end = p['pred'][-1]
+            gt_end = p['gt'][-1]
+            end_ok = np.all(np.abs(pred_end - gt_end)[:2] <= thresholds[:2])
+            
+            if start_ok and end_ok:
+                counts[obj]['success'] += 1
+        
+        # Calculate Rates
+        for obj, stats in counts.items():
+            rate = (stats['success'] / stats['total']) * 100
+            final_stats[s['label']][obj] = rate
+            print(f"  {obj}: {rate:.2f}% ({stats['success']}/{stats['total']})")
+
+    # Generate Bar Chart
+    print("\nGenerating Bar Chart...")
+    
+    # Data Preparation
+    labels = [object_config[o]['label'] for o in object_config] # ["Round Peg (Source)", "Square Peg (Target)"]
+    obj_keys = list(object_config.keys()) # ['round_peg_4', 'square_peg_4']
+    
+    x = np.arange(len(labels))  # label locations
+    width = 0.35  # width of the bars
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Plot bars for each scenario
+    rects1 = ax.bar(x - width/2, [final_stats['5% (Strict)'][k] for k in obj_keys], width, label='5% Tolerance (Strict)', color='#d9534f')
+    rects2 = ax.bar(x + width/2, [final_stats['10% (Relaxed)'][k] for k in obj_keys], width, label='10% Tolerance (Relaxed)', color='#5bc0de')
+    
+    # Styling
+    ax.set_ylabel('Success Rate (%)', fontsize=12, fontweight='bold')
+    ax.set_title('Task Extrapolation Success Rates\n(Round vs. Square Peg)', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=11, fontweight='bold')
+    ax.set_ylim(0, 110)
+    ax.legend(loc='upper right', fontsize=10)
+    ax.grid(axis='y', linestyle='--', alpha=0.5)
+    
+    # Add Value Labels on top of bars
+    def autolabel(rects):
+        for rect in rects:
+            height = rect.get_height()
+            ax.annotate(f'{height:.1f}%',
+                        xy=(rect.get_x() + rect.get_width() / 2, height),
+                        xytext=(0, 3),  # 3 points vertical offset
+                        textcoords="offset points",
+                        ha='center', va='bottom', fontweight='bold')
+
+    autolabel(rects1)
+    autolabel(rects2)
+    
+    plt.tight_layout()
+    plot_path = os.path.join(save_path, 'success_rate_comparison.png')
+    plt.savefig(plot_path, dpi=300)
+    print(f"Bar chart saved to {plot_path}")
 
 def evaluate_random_trajectories(num_samples=6):
     # 1. Load Norm Stats
@@ -466,5 +522,5 @@ def evaluate_random_trajectories(num_samples=6):
 
 if __name__ == "__main__":
     plot_training_progress()
-    calculate_success_rates()
+    calculate_success_rates_and_plot()
     evaluate_random_trajectories(num_samples=100)
